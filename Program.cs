@@ -19,21 +19,23 @@ using Microsoft.Extensions.FileProviders;
 // ----------------------------------------------------------------
 
 const int KILL_WAIT = 60;
-const string defaultApp = "xclock";
+const string defaultApp = "xclock"; // why: default safe app
+string[] approvedCommands = new string[] { "xeyes", "xclock" }; // why: restrict allowed commands
 List<ActiveSessions> sessions = new();
 Logger.Debug = true; // why: enable logging
 
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
-// why: log all HTTP requests
-app.Use(async (context, next) => {
+app.Use(async (context, next) =>
+{
     Logger.Log($"HTTP {context.Request.Method} {context.Request.Path}{context.Request.QueryString}");
     await next();
 });
 
 // why: normalize duplicate slashes
-app.Use(async (context, next) => {
+app.Use(async (context, next) =>
+{
     if (!string.IsNullOrWhiteSpace(context.Request.Path.Value))
     {
         string original = context.Request.Path.Value;
@@ -47,7 +49,7 @@ app.Use(async (context, next) => {
     await next();
 });
 
-// why: serve static files with proper MIME for .js files
+// why: serve static files with correct MIME for .js files
 var provider = new FileExtensionContentTypeProvider();
 provider.Mappings[".js"] = "application/javascript";
 app.UseStaticFiles(new StaticFileOptions {
@@ -57,7 +59,7 @@ app.UseStaticFiles(new StaticFileOptions {
 });
 app.UseWebSockets();
 
-// why: on shutdown, kill all session processes
+// why: on shutdown, force all sessions to quit
 app.Lifetime.ApplicationStopping.Register(() => {
     Logger.Log("Application stopping; terminating sessions");
     foreach (var s in sessions) {
@@ -67,7 +69,6 @@ app.Lifetime.ApplicationStopping.Register(() => {
     }
 });
 
-// ---------------- Helper Functions ----------------
 bool Authenticate(string cookie) => true;
 int GetFreePort() {
     using var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -96,7 +97,15 @@ ActiveSessions StartSession(string cookie, string procName) {
     })!;
     var wsProc = Process.Start(new ProcessStartInfo("websockify", $"{wsPort} localhost:{vncPort}") { UseShellExecute = false })!;
     Logger.Log($"Session started: cookie={cookie}, d:{display}, vnc(pid={vnc.Id}@{vncPort}), {procName}(pid={appProc.Id}), ws(pid={wsProc.Id}@{wsPort})");
-    return new ActiveSessions { Cookie = cookie, LastActive = DateTime.UtcNow, VncProcess = vnc, WebsockifyProcess = wsProc, AppProcess = appProc, VncPort = vncPort, WebsockifyPort = wsPort };
+    return new ActiveSessions {
+        Cookie = cookie,
+        LastActive = DateTime.UtcNow,
+        VncProcess = vnc,
+        WebsockifyProcess = wsProc,
+        AppProcess = appProc,
+        VncPort = vncPort,
+        WebsockifyPort = wsPort
+    };
 }
 void UpdateSession(string cookie) {
     int idx = sessions.FindIndex(s => s.Cookie == cookie);
@@ -135,12 +144,15 @@ _ = Task.Run(async () => {
     }
 });
 
-// ---------------- Routes ----------------
-// why: Only serve vnc_lite.html to users, WS endpoint is internal.
+// GET "/" route: redirect user only to vnc_lite.html (WS endpoint is passed as querystring without leading slash)
 app.MapGet("/", (HttpContext context) => {
     string targetApp = context.Request.Query["app"];
     if (string.IsNullOrEmpty(targetApp))
         targetApp = defaultApp;
+    if (!approvedCommands.Contains(targetApp)) { // why: restrict allowed commands
+        Logger.Log($"Disallowed app '{targetApp}' requested, defaulting to {defaultApp}");
+        targetApp = defaultApp;
+    }
     string sessionCookieName = $"session_{targetApp}";
     string cookie = context.Request.Cookies[sessionCookieName] ?? Guid.NewGuid().ToString();
     context.Response.Cookies.Append(sessionCookieName, cookie);
@@ -149,16 +161,20 @@ app.MapGet("/", (HttpContext context) => {
         session = StartSession(cookie, targetApp);
         sessions.Add(session);
         Logger.Log($"New session for cookie={cookie} app={targetApp}");
-    }
-    else {
+    } else {
         session = sessions.First(s => s.Cookie == cookie);
         Logger.Log($"Existing session for cookie={cookie} app={targetApp}");
     }
-    // why: send user to vnc_lite.html; pass session and WS endpoint (without leading slash)
     context.Response.Redirect($"/static/vnc_lite.html?session={cookie}&path={targetApp}/ws");
 });
+
+// WS forwarder endpoint: not directly seen by the user, only by vnc_lite.html.
 app.Map("/{targetApp}/ws", async (HttpContext context) => {
     string targetApp = (string?)context.Request.RouteValues["targetApp"] ?? defaultApp;
+    if (!approvedCommands.Contains(targetApp)) {
+        Logger.Log($"Disallowed app in WS: '{targetApp}', defaulting to {defaultApp}");
+        targetApp = defaultApp;
+    }
     string sessionCookieName = $"session_{targetApp}";
     string cookie = context.Request.Cookies[sessionCookieName] ?? Guid.NewGuid().ToString();
     if (context.Request.Cookies[sessionCookieName] is null)
@@ -185,8 +201,7 @@ app.Map("/{targetApp}/ws", async (HttpContext context) => {
     try {
         ws = await context.WebSockets.AcceptWebSocketAsync();
         Logger.Log($"WS upgrade accepted for cookie={cookie} in app={targetApp}");
-    }
-    catch (Exception ex) {
+    } catch (Exception ex) {
         Logger.Log($"WS upgrade failed for cookie={cookie} in app={targetApp}: {ex.Message}");
         return;
     }
@@ -195,8 +210,7 @@ app.Map("/{targetApp}/ws", async (HttpContext context) => {
         try {
             await client.ConnectAsync(new Uri($"ws://127.0.0.1:{userSession.WebsockifyPort}"), CancellationToken.None);
             Logger.Log($"Internal WS connected for cookie={cookie} in app={targetApp}");
-        }
-        catch (Exception ex) {
+        } catch (Exception ex) {
             Logger.Log($"Internal WS conn failed for cookie={cookie} in app={targetApp}: {ex.Message}");
             return;
         }
@@ -206,8 +220,7 @@ app.Map("/{targetApp}/ws", async (HttpContext context) => {
         try {
             await client.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
             await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
-        }
-        catch (Exception ex) {
+        } catch (Exception ex) {
             Logger.Log($"Error closing WS for cookie={cookie} in app={targetApp}: {ex.Message}");
         }
         Logger.Log($"WS closed for cookie={cookie} in app={targetApp}");
@@ -228,6 +241,7 @@ struct ActiveSessions {
     public int VncPort;
     public int WebsockifyPort;
 }
+
 static class Logger {
     public static bool Debug { get; set; }
     public static void Log(string msg) {
