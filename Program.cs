@@ -16,7 +16,7 @@ const int KILL_WAIT = 60; // seconds idle allowed
 const string appName = "xeyes";
 List<ActiveSessions> sessions = new();
 
-// Helper functions
+// Helper Functions
 
 bool Authenticate(string cookie) => true;
 
@@ -29,10 +29,27 @@ int GetFreePort() {
     return port;
 }
 
+bool WaitForPortOpen(int port, int timeoutMs = 5000) {
+    var sw = Stopwatch.StartNew();
+    while (sw.ElapsedMilliseconds < timeoutMs) {
+        try {
+            using (var client = new TcpClient("127.0.0.1", port))
+                return true;
+        } catch { Thread.Sleep(100); }
+    }
+    return false;
+}
+
 ActiveSessions StartSession(string cookie) {
     int vncPort = GetFreePort(), wsPort = GetFreePort(), display = new Random().Next(1, 100);
-    var vnc = Process.Start(new ProcessStartInfo("vncserver", $":{display} -rfbport {vncPort}") { UseShellExecute = false })!;
-    var appProc = Process.Start(new ProcessStartInfo("xeyes") { UseShellExecute = false, Environment = { ["DISPLAY"] = $":{display}" } })!;
+    var vnc = Process.Start(new ProcessStartInfo("vncserver", $":{display} -rfbport {vncPort} -localhost -SecurityTypes None") { UseShellExecute = false })!;
+    // Wait until vnc server is listening on vncPort to avoid race conditions.
+    if (!WaitForPortOpen(vncPort, 5000))
+        Logger.Log($"Warning: vnc server on port {vncPort} did not open within timeout.");
+    var appProc = Process.Start(new ProcessStartInfo("xeyes") {
+        UseShellExecute = false,
+        Environment = { ["DISPLAY"] = $":{display}" }
+    })!;
     var wsProc = Process.Start(new ProcessStartInfo("websockify", $"{wsPort} localhost:{vncPort}") { UseShellExecute = false })!;
     Logger.Log($"Session started: cookie={cookie}, display=:{display}, vnc(pid={vnc.Id}@{vncPort}), xeyes(pid={appProc.Id}), ws(pid={wsProc.Id}@{wsPort})");
     return new ActiveSessions {
@@ -96,7 +113,8 @@ app.UseStaticFiles(new StaticFileOptions {
     RequestPath = "/static"
 });
 
-// Check for a session cookie named "session_xeyes", then redirect to static/vnc.html with query parameters.
+// GET / checks for session cookie ("session_xeyes") and redirects to vnc_lite.html,
+// passing only the session and the WebSocket endpoint path (e.g. "/xeyes/ws").
 app.MapGet("/", (HttpContext context) => {
     string sessionCookieName = $"session_{appName}";
     string cookie = context.Request.Cookies[sessionCookieName] ?? Guid.NewGuid().ToString();
@@ -110,11 +128,11 @@ app.MapGet("/", (HttpContext context) => {
         session = sessions.First(s => s.Cookie == cookie);
         Logger.Log($"Existing session accessed for cookie={cookie}");
     }
-    // Pass the session cookie and websocket port to the client.
-    context.Response.Redirect($"/static/vnc.html?session={cookie}&wsport={session.WebsockifyPort}");
+    context.Response.Redirect($"/static/vnc_lite.html?session={cookie}&path=/{appName}/ws");
 });
 
-// WebSocket endpoint at /xeyes/ws that uses the "session_xeyes" cookie.
+// Public WebSocket endpoint at /xeyes/ws (using session cookie for auth) forwards
+// data to the internal (localhost-only) websockify instance.
 app.Map($"/{appName}/ws", async (HttpContext context) => {
     string sessionCookieName = $"session_{appName}";
     string cookie = context.Request.Cookies[sessionCookieName] ?? Guid.NewGuid().ToString();
@@ -142,7 +160,7 @@ app.Map($"/{appName}/ws", async (HttpContext context) => {
     Logger.Log($"WebSocket accepted for cookie={cookie}");
     using var client = new ClientWebSocket();
     await client.ConnectAsync(new Uri($"ws://127.0.0.1:{userSession.WebsockifyPort}"), CancellationToken.None);
-    Logger.Log($"WebSocket connected to local ws: cookie={cookie}, wsPort={userSession.WebsockifyPort}");
+    Logger.Log($"WebSocket connected to internal ws: cookie={cookie}");
     var t1 = Pump(ws, client, cookie);
     var t2 = Pump(client, ws, cookie);
     await Task.WhenAny(t1, t2);
