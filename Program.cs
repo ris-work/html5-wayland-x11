@@ -22,29 +22,30 @@ List<ActiveSessions> sessions = new();
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
-// Logging middleware: log every HTTP request.
+// Log every incoming HTTP request.
 app.Use(async (context, next) =>
 {
     Logger.Log($"HTTP {context.Request.Method} {context.Request.Path}{context.Request.QueryString}");
     await next();
 });
 
-// Middleware to normalize paths: replace multiple slashes with a single slash.
+// Normalize request paths: replace multiple slashes with a single slash.
 app.Use(async (context, next) =>
 {
-    if (!string.IsNullOrEmpty(context.Request.Path.Value))
+    if (!string.IsNullOrWhiteSpace(context.Request.Path.Value))
     {
-        string normalized = Regex.Replace(context.Request.Path.Value, @"\/{2,}", "/");
-        if (normalized != context.Request.Path.Value)
+        string original = context.Request.Path.Value;
+        string normalized = Regex.Replace(original, "/+", "/");
+        if (normalized != original)
         {
-            Logger.Log($"Normalized path from {context.Request.Path.Value} to {normalized}");
+            Logger.Log($"Normalized path from {original} to {normalized}");
             context.Request.Path = new PathString(normalized);
         }
     }
     await next();
 });
 
-// Set up static file middleware with explicit MIME types.
+// Static files: explicitly serve .js files with "application/javascript".
 var contentProvider = new FileExtensionContentTypeProvider();
 contentProvider.Mappings[".js"] = "application/javascript";
 app.UseStaticFiles(new StaticFileOptions
@@ -56,7 +57,7 @@ app.UseStaticFiles(new StaticFileOptions
 
 app.UseWebSockets();
 
-// Helper functions
+// -------------------- Helper Functions --------------------
 
 bool Authenticate(string cookie) => true;
 
@@ -70,6 +71,7 @@ int GetFreePort()
     return port;
 }
 
+// Poll until the given port is open, up to timeoutMs.
 bool WaitForPortOpen(int port, int timeoutMs = 5000)
 {
     var sw = Stopwatch.StartNew();
@@ -85,21 +87,28 @@ bool WaitForPortOpen(int port, int timeoutMs = 5000)
     return false;
 }
 
+// Starts the session: launches vncserver, waits for it, then starts the app and websockify.
 ActiveSessions StartSession(string cookie)
 {
     int vncPort = GetFreePort(), wsPort = GetFreePort(), display = new Random().Next(1, 100);
-    // Launch vncserver configured for a passwordless, localhost-bound session.
-    var vnc = Process.Start(new ProcessStartInfo("vncserver", $":{display} -rfbport {vncPort} -localhost -SecurityTypes None") { UseShellExecute = false })!;
+    // Launch passwordless, localhost-bound vncserver.
+    var vnc = Process.Start(new ProcessStartInfo("vncserver", $":{display} -rfbport {vncPort} -localhost -SecurityTypes None")
+    {
+        UseShellExecute = false
+    })!;
     if (!WaitForPortOpen(vncPort))
         Logger.Log($"Warning: vnc server on port {vncPort} did not open within timeout.");
-    // Start the app (xeyes) only after vncserver is confirmed to be listening.
+    // Start the app (xeyes) using the DISPLAY variable.
     var appProc = Process.Start(new ProcessStartInfo("xeyes")
     {
         UseShellExecute = false,
         Environment = { ["DISPLAY"] = $":{display}" }
     })!;
-    // Start websockify on a private, localhost-only port.
-    var wsProc = Process.Start(new ProcessStartInfo("websockify", $"{wsPort} localhost:{vncPort}") { UseShellExecute = false })!;
+    // Start websockify bound to localhost only.
+    var wsProc = Process.Start(new ProcessStartInfo("websockify", $"{wsPort} localhost:{vncPort}")
+    {
+        UseShellExecute = false
+    })!;
     Logger.Log($"Session started: cookie={cookie}, display=:{display}, vnc(pid={vnc.Id}@{vncPort}), xeyes(pid={appProc.Id}), ws(pid={wsProc.Id}@{wsPort})");
     return new ActiveSessions
     {
@@ -125,6 +134,7 @@ void UpdateSession(string cookie)
     }
 }
 
+// Bidirectional pump: relays bytes between the two WebSocket endpoints.
 async Task Pump(WebSocket src, WebSocket dst, string cookie)
 {
     var buffer = new byte[4096];
@@ -136,12 +146,13 @@ async Task Pump(WebSocket src, WebSocket dst, string cookie)
             break;
         UpdateSession(cookie);
         Logger.Log($"Pump {cookie}: forwarded {result.Count} bytes");
-        await dst.SendAsync(new ArraySegment<byte>(buffer, 0, result.Count), result.MessageType, result.EndOfMessage, CancellationToken.None);
+        await dst.SendAsync(new ArraySegment<byte>(buffer, 0, result.Count),
+            result.MessageType, result.EndOfMessage, CancellationToken.None);
     }
     Logger.Log($"Pump ended for cookie={cookie}");
 }
 
-// Periodic cleanup: remove sessions idle longer than KILL_WAIT seconds.
+// Periodic cleanup: every 5 seconds, remove sessions idle longer than KILL_WAIT.
 _ = Task.Run(async () =>
 {
     while (true)
@@ -162,10 +173,10 @@ _ = Task.Run(async () =>
     }
 });
 
-// Define application routes
+// -------------------- Routes --------------------
 
-// GET "/" checks for the session cookie and either creates a new session or reuses it.
-// Redirects to vnc_lite.html with query parameters that include the session and the public WS endpoint path.
+// GET "/"  check the session cookie ("session_xeyes"), then start or reuse the session.
+// Redirects to vnc_lite.html with query parameters: session and path (the public WebSocket endpoint).
 app.MapGet("/", (HttpContext context) =>
 {
     string sessionCookieName = $"session_{appName}";
@@ -186,8 +197,8 @@ app.MapGet("/", (HttpContext context) =>
     context.Response.Redirect($"/static/vnc_lite.html?session={cookie}&path=/{appName}/ws");
 });
 
-// Public WebSocket endpoint at "/xeyes/ws".
-// It uses the "session_xeyes" cookie to authenticate and then connects internally to the websockify instance.
+// WebSocket endpoint at "/xeyes/ws"  the forwarder.
+// It accepts an upgrade, logs the upgrade process separately, and then forwards data to the internal websockify instance.
 app.Map($"/{appName}/ws", async (HttpContext context) =>
 {
     string sessionCookieName = $"session_{appName}";
@@ -215,21 +226,49 @@ app.Map($"/{appName}/ws", async (HttpContext context) =>
         Logger.Log($"Session restarted for cookie={cookie}");
     }
     var userSession = sessions[idx];
-    using var ws = await context.WebSockets.AcceptWebSocketAsync();
-    Logger.Log($"WebSocket accepted for cookie={cookie}");
-    using var client = new ClientWebSocket();
-    // Connect internally to the private websockify instance.
-    await client.ConnectAsync(new Uri($"ws://127.0.0.1:{userSession.WebsockifyPort}"), CancellationToken.None);
-    Logger.Log($"WebSocket connected to internal ws: cookie={cookie}");
-    var t1 = Pump(ws, client, cookie);
-    var t2 = Pump(client, ws, cookie);
-    await Task.WhenAny(t1, t2);
-    await client.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
-    await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
-    Logger.Log($"WebSocket closed for cookie={cookie}");
+    WebSocket ws = null;
+    try
+    {
+        ws = await context.WebSockets.AcceptWebSocketAsync();
+        Logger.Log($"WebSocket upgrade accepted for cookie={cookie}");
+    }
+    catch (Exception ex)
+    {
+        Logger.Log($"WebSocket upgrade failed for cookie={cookie}: {ex.Message}");
+        return;
+    }
+    using (ws)
+    {
+        using var client = new ClientWebSocket();
+        try
+        {
+            await client.ConnectAsync(new Uri($"ws://127.0.0.1:{userSession.WebsockifyPort}"), CancellationToken.None);
+            Logger.Log($"Internal WebSocket connected for cookie={cookie}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"Internal WebSocket connection failed for cookie={cookie}: {ex.Message}");
+            return;
+        }
+        var t1 = Pump(ws, client, cookie);
+        var t2 = Pump(client, ws, cookie);
+        await Task.WhenAny(t1, t2);
+        try
+        {
+            await client.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
+            await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"Error closing WebSockets for cookie={cookie}: {ex.Message}");
+        }
+        Logger.Log($"WebSocket closed for cookie={cookie}");
+    }
 });
 
 app.Run();
+
+// -------------------- Type Declarations --------------------
 
 static class Logger
 {
