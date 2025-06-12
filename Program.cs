@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.AspNetCore.StaticFiles;
 
 const int KILL_WAIT = 60; // seconds idle allowed
 const string appName = "xeyes";
@@ -108,9 +109,16 @@ _ = Task.Run(async () => {
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 app.UseWebSockets();
+
+// Static file middleware: explicitly map .js files to "application/javascript".
+var provider = new FileExtensionContentTypeProvider();
+provider.Mappings[".js"] = "application/javascript";
+// If you also have module files with a .mjs extension, uncomment the following line:
+// provider.Mappings[".mjs"] = "application/javascript";
 app.UseStaticFiles(new StaticFileOptions {
     FileProvider = new PhysicalFileProvider(Path.Combine(Directory.GetCurrentDirectory(), "static")),
-    RequestPath = "/static"
+    RequestPath = "/static",
+    ContentTypeProvider = provider,
 });
 
 // GET / checks for session cookie ("session_xeyes") and redirects to vnc_lite.html,
