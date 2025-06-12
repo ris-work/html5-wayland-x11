@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
@@ -17,16 +18,33 @@ const int KILL_WAIT = 60; // seconds idle allowed
 const string appName = "xeyes";
 List<ActiveSessions> sessions = new();
 
-// Logging middleware to log every request.
+// Build the web app.
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
+
+// Logging middleware: log every HTTP request.
 app.Use(async (context, next) =>
 {
     Logger.Log($"HTTP {context.Request.Method} {context.Request.Path}{context.Request.QueryString}");
     await next();
 });
 
-// Map .js files to application/javascript.
+// Middleware to normalize paths: replace multiple slashes with a single slash.
+app.Use(async (context, next) =>
+{
+    if (!string.IsNullOrEmpty(context.Request.Path.Value))
+    {
+        string normalized = Regex.Replace(context.Request.Path.Value, @"\/{2,}", "/");
+        if (normalized != context.Request.Path.Value)
+        {
+            Logger.Log($"Normalized path from {context.Request.Path.Value} to {normalized}");
+            context.Request.Path = new PathString(normalized);
+        }
+    }
+    await next();
+});
+
+// Set up static file middleware with explicit MIME types.
 var contentProvider = new FileExtensionContentTypeProvider();
 contentProvider.Mappings[".js"] = "application/javascript";
 app.UseStaticFiles(new StaticFileOptions
@@ -70,17 +88,17 @@ bool WaitForPortOpen(int port, int timeoutMs = 5000)
 ActiveSessions StartSession(string cookie)
 {
     int vncPort = GetFreePort(), wsPort = GetFreePort(), display = new Random().Next(1, 100);
-    // Launch vncserver with no password (-SecurityTypes None) and bind to localhost.
+    // Launch vncserver configured for a passwordless, localhost-bound session.
     var vnc = Process.Start(new ProcessStartInfo("vncserver", $":{display} -rfbport {vncPort} -localhost -SecurityTypes None") { UseShellExecute = false })!;
     if (!WaitForPortOpen(vncPort))
         Logger.Log($"Warning: vnc server on port {vncPort} did not open within timeout.");
-    // Now start xeyes after vncserver is ready.
+    // Start the app (xeyes) only after vncserver is confirmed to be listening.
     var appProc = Process.Start(new ProcessStartInfo("xeyes")
     {
         UseShellExecute = false,
         Environment = { ["DISPLAY"] = $":{display}" }
     })!;
-    // The websockify process remains bound to localhost.
+    // Start websockify on a private, localhost-only port.
     var wsProc = Process.Start(new ProcessStartInfo("websockify", $"{wsPort} localhost:{vncPort}") { UseShellExecute = false })!;
     Logger.Log($"Session started: cookie={cookie}, display=:{display}, vnc(pid={vnc.Id}@{vncPort}), xeyes(pid={appProc.Id}), ws(pid={wsProc.Id}@{wsPort})");
     return new ActiveSessions
@@ -123,7 +141,7 @@ async Task Pump(WebSocket src, WebSocket dst, string cookie)
     Logger.Log($"Pump ended for cookie={cookie}");
 }
 
-// Periodic cleanup: remove sessions idle for more than KILL_WAIT seconds.
+// Periodic cleanup: remove sessions idle longer than KILL_WAIT seconds.
 _ = Task.Run(async () =>
 {
     while (true)
@@ -144,10 +162,10 @@ _ = Task.Run(async () =>
     }
 });
 
-// Define routes
+// Define application routes
 
-// GET "/"  check for session cookie and launch/start session; redirect to vnc_lite.html.
-// The query string now passes only the session cookie and the public WebSocket endpoint path.
+// GET "/" checks for the session cookie and either creates a new session or reuses it.
+// Redirects to vnc_lite.html with query parameters that include the session and the public WS endpoint path.
 app.MapGet("/", (HttpContext context) =>
 {
     string sessionCookieName = $"session_{appName}";
@@ -165,12 +183,11 @@ app.MapGet("/", (HttpContext context) =>
         session = sessions.First(s => s.Cookie == cookie);
         Logger.Log($"Existing session accessed for cookie={cookie}");
     }
-    // Redirect to vnc_lite.html with session and public WebSocket endpoint path.
     context.Response.Redirect($"/static/vnc_lite.html?session={cookie}&path=/{appName}/ws");
 });
 
-// WebSocket endpoint at "/xeyes/ws"  note that requests are logged.
-// This endpoint checks the session cookie and then forwards the connection to the internal websockify instance.
+// Public WebSocket endpoint at "/xeyes/ws".
+// It uses the "session_xeyes" cookie to authenticate and then connects internally to the websockify instance.
 app.Map($"/{appName}/ws", async (HttpContext context) =>
 {
     string sessionCookieName = $"session_{appName}";
