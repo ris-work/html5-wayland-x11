@@ -14,11 +14,17 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
 
+// ----------------------------------------------------------------
+// Top-level statements start here.
+// ----------------------------------------------------------------
+
 const int KILL_WAIT = 60; // seconds idle allowed
-const string appName = "xeyes";
+const string defaultApp = "xclock"; // default target app if not specified
 List<ActiveSessions> sessions = new();
 
-// Build the web app.
+// Enable conditional logging (true to log, false to disable).
+Logger.Debug = true; 
+
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
@@ -29,7 +35,7 @@ app.Use(async (context, next) =>
     await next();
 });
 
-// Normalize request paths: replace multiple slashes with a single slash.
+// Normalize request paths: replace duplicate slashes with a single slash.
 app.Use(async (context, next) =>
 {
     if (!string.IsNullOrWhiteSpace(context.Request.Path.Value))
@@ -38,14 +44,14 @@ app.Use(async (context, next) =>
         string normalized = Regex.Replace(original, "/+", "/");
         if (normalized != original)
         {
-            Logger.Log($"Normalized path from {original} to {normalized}");
+            Logger.Log($"Normalized path from '{original}' to '{normalized}'");
             context.Request.Path = new PathString(normalized);
         }
     }
     await next();
 });
 
-// Static files: explicitly serve .js files with "application/javascript".
+// Serve static files. Explicitly map ".js" files to "application/javascript".
 var contentProvider = new FileExtensionContentTypeProvider();
 contentProvider.Mappings[".js"] = "application/javascript";
 app.UseStaticFiles(new StaticFileOptions
@@ -57,10 +63,12 @@ app.UseStaticFiles(new StaticFileOptions
 
 app.UseWebSockets();
 
-// -------------------- Helper Functions --------------------
+// ---------------- Helper Functions ----------------
 
+// A simple stub that always returns true.
 bool Authenticate(string cookie) => true;
 
+// Returns a free TCP port.
 int GetFreePort()
 {
     using var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -71,7 +79,7 @@ int GetFreePort()
     return port;
 }
 
-// Poll until the given port is open, up to timeoutMs.
+// Poll until the given port is open or timeout elapses.
 bool WaitForPortOpen(int port, int timeoutMs = 5000)
 {
     var sw = Stopwatch.StartNew();
@@ -87,29 +95,31 @@ bool WaitForPortOpen(int port, int timeoutMs = 5000)
     return false;
 }
 
-// Starts the session: launches vncserver, waits for it, then starts the app and websockify.
-ActiveSessions StartSession(string cookie)
+// Starts a new session by launching the VNC server (passwordless and localhost-bound),
+// waiting for it to open, then launching the target GUI app (procName, e.g. "xeyes" or "xclock")
+// and finally starting websockify.
+ActiveSessions StartSession(string cookie, string procName)
 {
     int vncPort = GetFreePort(), wsPort = GetFreePort(), display = new Random().Next(1, 100);
-    // Launch passwordless, localhost-bound vncserver.
+    // Launch vncserver with -localhost and -SecurityTypes None.
     var vnc = Process.Start(new ProcessStartInfo("vncserver", $":{display} -rfbport {vncPort} -localhost -SecurityTypes None")
     {
         UseShellExecute = false
     })!;
     if (!WaitForPortOpen(vncPort))
         Logger.Log($"Warning: vnc server on port {vncPort} did not open within timeout.");
-    // Start the app (xeyes) using the DISPLAY variable.
-    var appProc = Process.Start(new ProcessStartInfo("xeyes")
+    // Launch the target GUI process.
+    var appProc = Process.Start(new ProcessStartInfo(procName)
     {
         UseShellExecute = false,
         Environment = { ["DISPLAY"] = $":{display}" }
     })!;
-    // Start websockify bound to localhost only.
+    // Launch websockify on a private port forwarding to vncPort.
     var wsProc = Process.Start(new ProcessStartInfo("websockify", $"{wsPort} localhost:{vncPort}")
     {
         UseShellExecute = false
     })!;
-    Logger.Log($"Session started: cookie={cookie}, display=:{display}, vnc(pid={vnc.Id}@{vncPort}), xeyes(pid={appProc.Id}), ws(pid={wsProc.Id}@{wsPort})");
+    Logger.Log($"Session started: cookie={cookie}, display=:{display}, vnc(pid={vnc.Id}@{vncPort}), {procName}(pid={appProc.Id}), ws(pid={wsProc.Id}@{wsPort})");
     return new ActiveSessions
     {
         Cookie = cookie,
@@ -122,6 +132,7 @@ ActiveSessions StartSession(string cookie)
     };
 }
 
+// Update a session's last active timestamp.
 void UpdateSession(string cookie)
 {
     int idx = sessions.FindIndex(s => s.Cookie == cookie);
@@ -134,7 +145,7 @@ void UpdateSession(string cookie)
     }
 }
 
-// Bidirectional pump: relays bytes between the two WebSocket endpoints.
+// Bidirectional pump to relay data between two WebSocket endpoints.
 async Task Pump(WebSocket src, WebSocket dst, string cookie)
 {
     var buffer = new byte[4096];
@@ -152,7 +163,7 @@ async Task Pump(WebSocket src, WebSocket dst, string cookie)
     Logger.Log($"Pump ended for cookie={cookie}");
 }
 
-// Periodic cleanup: every 5 seconds, remove sessions idle longer than KILL_WAIT.
+// Periodic cleanup: remove sessions idle longer than KILL_WAIT.
 _ = Task.Run(async () =>
 {
     while (true)
@@ -173,68 +184,76 @@ _ = Task.Run(async () =>
     }
 });
 
-// -------------------- Routes --------------------
+// ---------------- Routes ----------------
 
-// GET "/"  check the session cookie ("session_xeyes"), then start or reuse the session.
-// Redirects to vnc_lite.html with query parameters: session and path (the public WebSocket endpoint).
+// GET "/" route:
+// Reads an optional query parameter "app" (defaulting to "xclock"), sets a session cookie,
+// starts (or reuses) a session, and then redirects the user to "/static/vnc_lite.html"
+// with query parameters "session" (the session cookie) and "path" (the public WS endpoint).
 app.MapGet("/", (HttpContext context) =>
 {
-    string sessionCookieName = $"session_{appName}";
+    string targetApp = context.Request.Query["app"];
+    if (string.IsNullOrEmpty(targetApp))
+        targetApp = defaultApp;
+    string sessionCookieName = $"session_{targetApp}";
     string cookie = context.Request.Cookies[sessionCookieName] ?? Guid.NewGuid().ToString();
     context.Response.Cookies.Append(sessionCookieName, cookie);
     ActiveSessions session;
     if (!sessions.Any(s => s.Cookie == cookie))
     {
-        session = StartSession(cookie);
+        session = StartSession(cookie, targetApp);
         sessions.Add(session);
-        Logger.Log($"New session created for cookie={cookie}");
+        Logger.Log($"New session created for cookie={cookie} with app={targetApp}");
     }
     else
     {
         session = sessions.First(s => s.Cookie == cookie);
-        Logger.Log($"Existing session accessed for cookie={cookie}");
+        Logger.Log($"Existing session accessed for cookie={cookie} with app={targetApp}");
     }
-    context.Response.Redirect($"/static/vnc_lite.html?session={cookie}&path=/{appName}/ws");
+    // Redirect the browser to the VNC web client (vnc_lite.html). The WS endpoint is passed as a
+    // query parameter so that the client connects internally. Notice we never expose /{targetApp}/ws.
+    context.Response.Redirect($"/static/vnc_lite.html?session={cookie}&path=/{targetApp}/ws");
 });
 
-// WebSocket endpoint at "/xeyes/ws"  the forwarder.
-// It accepts an upgrade, logs the upgrade process separately, and then forwards data to the internal websockify instance.
-app.Map($"/{appName}/ws", async (HttpContext context) =>
+// WebSocket forwarder endpoint for "/{targetApp}/ws":
+// This route is not directly exposed to the user but is referenced by vnc_lite.html.
+app.Map("/{targetApp}/ws", async (HttpContext context) =>
 {
-    string sessionCookieName = $"session_{appName}";
+    string targetApp = (string?)context.Request.RouteValues["targetApp"] ?? defaultApp;
+    string sessionCookieName = $"session_{targetApp}";
     string cookie = context.Request.Cookies[sessionCookieName] ?? Guid.NewGuid().ToString();
     if (context.Request.Cookies[sessionCookieName] is null)
         context.Response.Cookies.Append(sessionCookieName, cookie);
     if (!context.WebSockets.IsWebSocketRequest)
     {
         context.Response.StatusCode = 400;
-        Logger.Log($"{appName} ws rejected: Not a WebSocket request");
+        Logger.Log($"{targetApp} ws rejected: Not a WebSocket request");
         return;
     }
     if (!Authenticate(cookie))
     {
         context.Response.StatusCode = 401;
-        Logger.Log($"{appName} ws rejected: Authentication failed");
+        Logger.Log($"{targetApp} ws rejected: Authentication failed");
         return;
     }
     int idx = sessions.FindIndex(s => s.Cookie == cookie);
     if (idx == -1)
     {
-        var session = StartSession(cookie);
+        var session = StartSession(cookie, targetApp);
         sessions.Add(session);
         idx = sessions.Count - 1;
-        Logger.Log($"Session restarted for cookie={cookie}");
+        Logger.Log($"Session restarted for cookie={cookie} with app={targetApp}");
     }
     var userSession = sessions[idx];
     WebSocket ws = null;
     try
     {
         ws = await context.WebSockets.AcceptWebSocketAsync();
-        Logger.Log($"WebSocket upgrade accepted for cookie={cookie}");
+        Logger.Log($"WebSocket upgrade accepted for cookie={cookie} in app={targetApp}");
     }
     catch (Exception ex)
     {
-        Logger.Log($"WebSocket upgrade failed for cookie={cookie}: {ex.Message}");
+        Logger.Log($"WebSocket upgrade failed for cookie={cookie} in app={targetApp}: {ex.Message}");
         return;
     }
     using (ws)
@@ -242,12 +261,13 @@ app.Map($"/{appName}/ws", async (HttpContext context) =>
         using var client = new ClientWebSocket();
         try
         {
+            // Connect internally to the private websockify instance.
             await client.ConnectAsync(new Uri($"ws://127.0.0.1:{userSession.WebsockifyPort}"), CancellationToken.None);
-            Logger.Log($"Internal WebSocket connected for cookie={cookie}");
+            Logger.Log($"Internal WebSocket connected for cookie={cookie} in app={targetApp}");
         }
         catch (Exception ex)
         {
-            Logger.Log($"Internal WebSocket connection failed for cookie={cookie}: {ex.Message}");
+            Logger.Log($"Internal WebSocket connection failed for cookie={cookie} in app={targetApp}: {ex.Message}");
             return;
         }
         var t1 = Pump(ws, client, cookie);
@@ -260,20 +280,17 @@ app.Map($"/{appName}/ws", async (HttpContext context) =>
         }
         catch (Exception ex)
         {
-            Logger.Log($"Error closing WebSockets for cookie={cookie}: {ex.Message}");
+            Logger.Log($"Error closing WebSockets for cookie={cookie} in app={targetApp}: {ex.Message}");
         }
-        Logger.Log($"WebSocket closed for cookie={cookie}");
+        Logger.Log($"WebSocket closed for cookie={cookie} in app={targetApp}");
     }
 });
 
 app.Run();
 
-// -------------------- Type Declarations --------------------
-
-static class Logger
-{
-    public static void Log(string msg) => Console.WriteLine($"[{DateTime.UtcNow:O}] {msg}");
-}
+// ----------------------------------------------------------------
+// All type declarations must come after top-level statements.
+// ----------------------------------------------------------------
 
 struct ActiveSessions
 {
@@ -284,5 +301,16 @@ struct ActiveSessions
     public Process AppProcess;
     public int VncPort;
     public int WebsockifyPort;
+}
+
+static class Logger
+{
+    // Global debug flag; logging occurs only if Debug is true.
+    public static bool Debug { get; set; }
+    public static void Log(string msg)
+    {
+        if (Debug)
+            Console.WriteLine($"[{DateTime.UtcNow:O}] {msg}");
+    }
 }
 
