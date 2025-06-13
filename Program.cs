@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
+using System.Text; // Needed for Encoding.ASCII in the handshake
 
 // ----------------------------------------------------------------
 // Top-level statements (all types come after)
@@ -103,17 +104,41 @@ bool WaitForPortOpen(int port, int timeoutMs = 5000) {
     }
     return false;
 }
+bool WaitForUnixSocketOpen(string socketPath, int timeoutMs = 5000)
+{
+    var sw = Stopwatch.StartNew();
+    while (sw.ElapsedMilliseconds < timeoutMs)
+    {
+        try
+        {
+            using (var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified))
+            {
+                // Attempt to connect to the Unix socket.
+                var endpoint = new UnixDomainSocketEndPoint(socketPath);
+                socket.Connect(endpoint);
+                return true;
+            }
+        }
+        catch
+        {
+            // Socket not yet available; wait briefly.
+            Thread.Sleep(100);
+        }
+    }
+    return false;
+}
+
 ActiveSessions StartSession(string cookie, string procName) {
     int vncPort = GetFreePort(), wsPort = GetFreePort(), display = new Random().Next(1, 100);
-    var vnc = Process.Start(new ProcessStartInfo("setsid", $"{vncserver} :{display} -rfbport {vncPort} -localhost -SecurityTypes None") { UseShellExecute = false })!;
-    if (!WaitForPortOpen(vncPort))
-        Logger.Log($"Warning: vnc server on port {vncPort} did not open");
+    var vnc = Process.Start(new ProcessStartInfo("setsid", $"{vncserver} :{display} -rfbunixpath unix-{vncPort} -SecurityTypes None") { UseShellExecute = false })!;
+    if (!WaitForUnixSocketOpen($"unix-{vncPort}"))
+        Logger.Log($"Warning: vnc server on port unix-{vncPort} did not open");
     var appProc = Process.Start(new ProcessStartInfo(procName) {
         UseShellExecute = false,
         Environment = { ["DISPLAY"] = $":{display}" }
     })!;
-    var wsProc = Process.Start(new ProcessStartInfo("websockify", $"{wsPort} localhost:{vncPort}") { UseShellExecute = false })!;
-    Logger.Log($"Session started: cookie={cookie}, d:{display}, vnc(pid={vnc.Id}@{vncPort}), {procName}(pid={appProc.Id}), ws(pid={wsProc.Id}@{wsPort})");
+    var wsProc = Process.Start(new ProcessStartInfo("websockify", $"{wsPort} --unix-target=unix-{vncPort}") { UseShellExecute = false })!;
+    Logger.Log($"Session started: cookie={cookie}, d:{display}, vnc(pid={vnc.Id}@unix-{vncPort}), {procName}(pid={appProc.Id}), ws(pid={wsProc.Id}@{wsPort})");
     return new ActiveSessions {
         Cookie = cookie,
         LastActive = DateTime.UtcNow,
@@ -270,3 +295,64 @@ static class Logger {
     }
 }
 
+public static class UnixWS
+{
+    // Establish a WebSocket connection over a Unix Domain Socket.
+    public static async Task<WebSocket> ConnectAsync(
+        string socketPath,
+        string host,
+        string resource,
+        string subProtocol = null,
+        CancellationToken cancellationToken = default)
+    {
+        Logger.Log($"Attempting to connect to Unix Domain Socket at '{socketPath}'");
+        var endpoint = new UnixDomainSocketEndPoint(socketPath);
+        var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        await socket.ConnectAsync(endpoint, cancellationToken);
+        Logger.Log($"Connected to Unix Domain Socket at '{socketPath}'");
+
+        var stream = new NetworkStream(socket, ownsSocket: true);
+
+        // Generate a key for the WebSocket handshake.
+        string key = Convert.ToBase64String(Guid.NewGuid().ToByteArray());
+        Logger.Log($"Generated WebSocket handshake key: {key}");
+
+        // Build the handshake request.
+        var requestLines = new[]
+        {
+            $"GET {resource} HTTP/1.1",
+            $"Host: {host}",
+            "Upgrade: websocket",
+            "Connection: Upgrade",
+            $"Sec-WebSocket-Key: {key}",
+            "Sec-WebSocket-Version: 13",
+            subProtocol != null ? $"Sec-WebSocket-Protocol: {subProtocol}" : null,
+            "", // End of headers.
+            ""
+        };
+        string request = string.Join("\r\n", requestLines.Where(line => line != null));
+        byte[] requestBytes = Encoding.ASCII.GetBytes(request);
+        Logger.Log($"Sending handshake request:\n{request}");
+
+        await stream.WriteAsync(requestBytes, 0, requestBytes.Length, cancellationToken);
+
+        // Read and validate the handshake response.
+        byte[] buffer = new byte[1024];
+        int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+        string response = Encoding.ASCII.GetString(buffer, 0, bytesRead);
+        Logger.Log($"Received handshake response ({bytesRead} bytes):\n{response}");
+
+        if (!response.Contains("101 Switching Protocols"))
+        {
+            Logger.Log($"Handshake failed: [Response: {response}]");
+            throw new Exception("WebSocket handshake failed: " + response);
+        }
+        Logger.Log("Handshake succeeded, upgrading connection to WebSocket.");
+
+        // Wrap the stream as a client WebSocket.
+        var webSocket = WebSocket.CreateFromStream(stream, isServer: false, subProtocol: subProtocol,
+                                                     keepAliveInterval: TimeSpan.FromMinutes(2));
+        Logger.Log("WebSocket instance created from stream.");
+        return webSocket;
+    }
+}
