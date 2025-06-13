@@ -137,7 +137,7 @@ ActiveSessions StartSession(string cookie, string procName) {
         UseShellExecute = false,
         Environment = { ["DISPLAY"] = $":{display}" }
     })!;
-    var wsProc = Process.Start(new ProcessStartInfo("websockify", $"{wsPort} --unix-target=unix-{vncPort}") { UseShellExecute = false })!;
+    var wsProc = Process.Start(new ProcessStartInfo("websockify", $"--unix-listen=ws-{wsPort} --unix-target=unix-{vncPort}") { UseShellExecute = false })!;
     Logger.Log($"Session started: cookie={cookie}, d:{display}, vnc(pid={vnc.Id}@unix-{vncPort}), {procName}(pid={appProc.Id}), ws(pid={wsProc.Id}@{wsPort})");
     return new ActiveSessions {
         Cookie = cookie,
@@ -251,9 +251,10 @@ app.Map("/{targetApp}/ws", async (HttpContext context) => {
         return;
     }
     using (ws) {
-        using var client = new ClientWebSocket();
+        //using var client = new ClientWebSocket();
+	using var client = await UnixWS.ConnectAsync($"ws-{userSession.WebsockifyPort}", "localhost", "/");
         try {
-            await client.ConnectAsync(new Uri($"ws://127.0.0.1:{userSession.WebsockifyPort}"), CancellationToken.None);
+            //await client.ConnectAsync(new Uri($"ws://127.0.0.1:{userSession.WebsockifyPort}"), CancellationToken.None);
             Logger.Log($"Internal WS connected for cookie={cookie} in app={targetApp}");
         } catch (Exception ex) {
             Logger.Log($"Internal WS conn failed for cookie={cookie} in app={targetApp}: {ex.Message}");
