@@ -6,10 +6,36 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <InvariantGlobalization>true</InvariantGlobalization>
     <PublishAot>true</PublishAot>
+      <PublishAotCompressed>true</PublishAotCompressed>
+  <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  <OptimizationPreference>Size</OptimizationPreference>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0-preview.4.25258.110" />
   </ItemGroup>
+
+  <PropertyGroup>
+  <!-- Enable single file publishing and self-contained NativeAOT build -->
+  <PublishSingleFile>true</PublishSingleFile>
+  <SelfContained>true</SelfContained>
+  <!-- Include a runtime identifier appropriate for your target -->
+  <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+  <!-- Optionally, if you want all content files to be embedded and later self-extracted, set: -->
+  <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+  <EnableDefaultContentItems>false</EnableDefaultContentItems>
+</PropertyGroup>
+
+<ItemGroup>
+  <!-- Include all files under static/ in the publish output -->
+  <Content Include="static\**\*">
+    <!-- Ensures the files are copied on build and available after publish -->
+    <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    <!-- For single-file publish, setting this false means the file is embedded
+         (and then extracted at runtime) rather than placed alongside the exe -->
+    <ExcludeFromSingleFile>false</ExcludeFromSingleFile>
+  </Content>
+</ItemGroup>
+
   
 </Project>

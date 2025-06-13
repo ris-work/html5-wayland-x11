@@ -20,9 +20,9 @@ using Microsoft.Extensions.FileProviders;
 
 const int KILL_WAIT = 15;
 const string defaultApp = "xclock"; // why: default safe app
-string[] approvedCommands = new string[] { "xeyes", "xclock" }; // why: restrict allowed commands
+string[] approvedCommands = new string[] { "xeyes", "xclock", "scalc" }; // why: restrict allowed commands
 List<ActiveSessions> sessions = new();
-Logger.Debug = true; // why: enable logging
+Logger.Debug = false; // why: enable logging
 
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
@@ -54,11 +54,23 @@ app.Use(async (context, next) =>
     await next();
 });
 
+// Determine the base directory
+var baseDir = Directory.GetCurrentDirectory();
+var staticDir = Path.Combine(baseDir, "static");
+
+if (!Directory.Exists(staticDir))
+{
+    // Fallback to the extraction directory (typically AppContext.BaseDirectory)
+    baseDir = AppContext.BaseDirectory;
+    staticDir = Path.Combine(baseDir, "static");
+}
+
 // why: serve static files with correct MIME for .js files
 var provider = new FileExtensionContentTypeProvider();
 provider.Mappings[".js"] = "application/javascript";
 app.UseStaticFiles(new StaticFileOptions {
-    FileProvider = new PhysicalFileProvider(Path.Combine(Directory.GetCurrentDirectory(), "static")),
+    //FileProvider = new PhysicalFileProvider(Path.Combine(Directory.GetCurrentDirectory(), "static")),
+    FileProvider = new PhysicalFileProvider(staticDir),
     RequestPath = "/static",
     ContentTypeProvider = provider
 });
