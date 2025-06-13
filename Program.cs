@@ -18,7 +18,7 @@ using Microsoft.Extensions.FileProviders;
 // Top-level statements (all types come after)
 // ----------------------------------------------------------------
 
-const int KILL_WAIT = 60;
+const int KILL_WAIT = 15;
 const string defaultApp = "xclock"; // why: default safe app
 string[] approvedCommands = new string[] { "xeyes", "xclock" }; // why: restrict allowed commands
 List<ActiveSessions> sessions = new();
@@ -26,6 +26,11 @@ Logger.Debug = true; // why: enable logging
 
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
+
+var vncserver = "Xtigervnc";
+File.WriteAllText("empty_x_startup", "#!/bin/sh\nexec tail -f /dev/null");
+File.SetUnixFileMode("empty_x_startup", File.GetUnixFileMode("empty_x_startup") | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
+
 
 app.Use(async (context, next) =>
 {
@@ -88,7 +93,7 @@ bool WaitForPortOpen(int port, int timeoutMs = 5000) {
 }
 ActiveSessions StartSession(string cookie, string procName) {
     int vncPort = GetFreePort(), wsPort = GetFreePort(), display = new Random().Next(1, 100);
-    var vnc = Process.Start(new ProcessStartInfo("vncserver", $":{display} -rfbport {vncPort} -localhost -SecurityTypes None") { UseShellExecute = false })!;
+    var vnc = Process.Start(new ProcessStartInfo("setsid", $"{vncserver} :{display} -rfbport {vncPort} -localhost -SecurityTypes None") { UseShellExecute = false })!;
     if (!WaitForPortOpen(vncPort))
         Logger.Log($"Warning: vnc server on port {vncPort} did not open");
     var appProc = Process.Start(new ProcessStartInfo(procName) {
@@ -134,6 +139,8 @@ _ = Task.Run(async () => {
         sessions.RemoveAll(s => {
             if ((DateTime.UtcNow - s.LastActive).TotalSeconds > KILL_WAIT) {
                 Logger.Log($"Session idle: cookie={s.Cookie} idle for {(DateTime.UtcNow - s.LastActive).TotalSeconds}s; killing processes");
+		try { Console.Error.WriteLine($"Killing {s.VncProcess.Id}"); Process.Start(new ProcessStartInfo("kill", $"-KILL -- -{s.VncProcess.Id}"){UseShellExecute = false}); } catch (Exception E) {Console.Error.WriteLine(E);}
+		try { Process.Start(new ProcessStartInfo("kill", $"{s.VncProcess.Id}"){UseShellExecute=false}); } catch (Exception E) {Console.Error.WriteLine(E);}
                 try { if (!s.WebsockifyProcess.HasExited) s.WebsockifyProcess.Kill(); } catch { }
                 try { if (!s.VncProcess.HasExited) s.VncProcess.Kill(); } catch { }
                 try { if (!s.AppProcess.HasExited) s.AppProcess.Kill(); } catch { }
@@ -145,7 +152,7 @@ _ = Task.Run(async () => {
 });
 
 // GET "/" route: redirect user only to vnc_lite.html (WS endpoint is passed as querystring without leading slash)
-app.MapGet("/", (HttpContext context) => {
+app.MapGet("/", async (HttpContext context) => {
     string targetApp = context.Request.Query["app"];
     if (string.IsNullOrEmpty(targetApp))
         targetApp = defaultApp;
@@ -165,7 +172,8 @@ app.MapGet("/", (HttpContext context) => {
         session = sessions.First(s => s.Cookie == cookie);
         Logger.Log($"Existing session for cookie={cookie} app={targetApp}");
     }
-    context.Response.Redirect($"/static/vnc_lite.html?session={cookie}&path={targetApp}/ws");
+    await Task.Delay(2500);
+    context.Response.Redirect($"/static/vnc_lite.html?session={cookie}&path={targetApp}/ws&autoconnect=true");
 });
 
 // WS forwarder endpoint: not directly seen by the user, only by vnc_lite.html.
