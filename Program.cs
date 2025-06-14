@@ -20,7 +20,7 @@ using System.Text; // Needed for Encoding.ASCII in the handshake
 // ----------------------------------------------------------------
 
 const int KILL_WAIT = 15;
-const string defaultApp = "xclock"; // why: default safe app
+string defaultApp = "xclock"; // why: default safe app
 string[] approvedCommands = new string[] { "xeyes", "xclock", "scalc" }; // why: restrict allowed commands
 List<ActiveSessions> sessions = new();
 Logger.Debug = false; // why: enable logging
@@ -29,6 +29,23 @@ var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
 var vncserver = "Xtigervnc";
+// Retrieve the DEFAULT_PROGRAM_NAME environment variable.
+// If it is not provided or is empty, default to "xeyes".
+string DEFAULT_PROGRAM_NAME = Environment.GetEnvironmentVariable("DEFAULT_PROGRAM_NAME");
+approvedCommands = approvedCommands.ToList().Append(DEFAULT_PROGRAM_NAME).ToArray();
+if (string.IsNullOrEmpty(DEFAULT_PROGRAM_NAME))
+    {
+        DEFAULT_PROGRAM_NAME = "xeyes";
+    }
+defaultApp = DEFAULT_PROGRAM_NAME;
+
+// Retrieve the WEBSOCKIFY environment variable.
+// If it is not provided or is empty, default to "websockify".
+string WEBSOCKIFY = Environment.GetEnvironmentVariable("WEBSOCKIFY");
+if (string.IsNullOrEmpty(WEBSOCKIFY))
+    {
+        WEBSOCKIFY = "websockify";
+    }
 File.WriteAllText("empty_x_startup", "#!/bin/sh\nexec tail -f /dev/null");
 File.SetUnixFileMode("empty_x_startup", File.GetUnixFileMode("empty_x_startup") | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
 
@@ -137,7 +154,13 @@ ActiveSessions StartSession(string cookie, string procName) {
         UseShellExecute = false,
         Environment = { ["DISPLAY"] = $":{display}" }
     })!;
-    var wsProc = Process.Start(new ProcessStartInfo("websockify", $"--unix-listen=ws-{wsPort} --unix-target=unix-{vncPort}") { UseShellExecute = false })!;
+    Process wsProc;
+    if(WEBSOCKIFY=="websockify-rs") {
+    wsProc = Process.Start(new ProcessStartInfo("websockify-rs", $"--listen-unix=ws-{wsPort} --upstream-unix=unix-{vncPort}") { UseShellExecute = false })!;
+    }
+    else{
+    wsProc = Process.Start(new ProcessStartInfo("websockify", $"--unix-listen=ws-{wsPort} --unix-target=unix-{vncPort}") { UseShellExecute = false })!;
+    }
     Logger.Log($"Session started: cookie={cookie}, d:{display}, vnc(pid={vnc.Id}@unix-{vncPort}), {procName}(pid={appProc.Id}), ws(pid={wsProc.Id}@{wsPort})");
     return new ActiveSessions {
         Cookie = cookie,
