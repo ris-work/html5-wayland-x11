@@ -168,13 +168,34 @@ bool WaitForUnixSocketOpen(string socketPath, int timeoutMs = 5000)
 
 ActiveSessions StartSession(string cookie, string procName) {
     int vncPort = GetFreePort(), wsPort = GetFreePort(), display = new Random().Next(1, 100);
-    var vnc = Process.Start(new ProcessStartInfo("setsid", $"{vncserver} :{display} -rfbunixpath unix-{vncPort} -SecurityTypes None") { UseShellExecute = false })!;
-    if (!WaitForUnixSocketOpen($"unix-{vncPort}"))
-        Logger.Log($"Warning: vnc server on port unix-{vncPort} did not open");
-    var appProc = Process.Start(new ProcessStartInfo(procName) {
+    var swayPsi = new ProcessStartInfo("setsid", $"sway -c /dev/null")
+    {
         UseShellExecute = false,
-        Environment = { ["DISPLAY"] = $":{display}" }
+    };
+    swayPsi.Environment["SWAYSOCK"] = $"{Path.Combine(Directory.GetCurrentDirectory(),"wl-")}{display}.swaysock";
+    string RTDir = $"{Path.Combine(Directory.GetCurrentDirectory(),"wl-")}{display}";
+    string RTSock = $"{RTDir}.swaysock";
+    Console.WriteLine($"{swayPsi.Environment["SWAYSOCK"]}");
+    swayPsi.Environment["XDG_RUNTIME_DIR"] = $"{RTDir}";
+    swayPsi.Environment["WLR_BACKENDS"] = "headless";
+    swayPsi.Environment["WLR_RENDERER"] = "pixman";
+    swayPsi.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
+    Directory.CreateDirectory($"{RTDir}");
+    var vnc = Process.Start(swayPsi)!;
+    // One-liner swaymsg commands:
+    // Launch wayvnc with its UNIX socket set to "unix-{vncPort}.vncsock".
+    //Process.Start(new ProcessStartInfo("swaymsg", $"-s {Path.Combine(Directory.GetCurrentDirectory(),"wl-")}{display}.swaysock exec \"wayvnc --unix-socket {Path.Combine(Directory.GetCurrentDirectory(),"unix-")}{vncPort}\"") { UseShellExecute = false });
+    //var vnc = Process.Start(new ProcessStartInfo("setsid", $"{vncserver} :{display} -rfbunixpath unix-{vncPort} -SecurityTypes None") { UseShellExecute = false })!;
+    if (!WaitForUnixSocketOpen($"unix-{vncPort}"))
+    Process.Start(new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"wayvnc --unix-socket {Path.Combine(Directory.GetCurrentDirectory(),"unix-")}{vncPort}\"") { UseShellExecute = false });
+        Logger.Log($"Warning: vnc server on port unix-{vncPort} did not open");
+    //Process.Start(new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"wayvnc --unix-socket {Path.Combine(Directory.GetCurrentDirectory(),"unix-")}{vncPort}\"") { UseShellExecute = false });
+    var appProc = Process.Start(new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"{procName}\"") {
+        UseShellExecute = false,
+        //Environment = { ["DISPLAY"] = $":{display}" }
     })!;
+    //Process.Start(new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"wayvnc --unix-socket {Path.Combine(Directory.GetCurrentDirectory(),"unix-")}{vncPort}\"") { UseShellExecute = false });
+    //Process.Start(new ProcessStartInfo("swaymsg", $"-s {Path.Combine(Directory.GetCurrentDirectory(),"wl-")}{display}.swaysock exec \"wayvnc --unix-socket {Path.Combine(Directory.GetCurrentDirectory(),"unix-")}{vncPort}\"") { UseShellExecute = false });
     Process wsProc;
     if(WEBSOCKIFY=="websockify-rs") {
     wsProc = Process.Start(new ProcessStartInfo("websockify-rs", $"unix-{vncPort} ws-{wsPort} --listen-unix --upstream-unix") { UseShellExecute = false })!;
