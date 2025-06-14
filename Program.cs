@@ -46,6 +46,27 @@ if (string.IsNullOrEmpty(WEBSOCKIFY))
     {
         WEBSOCKIFY = "websockify";
     }
+string BASE_PATH = Environment.GetEnvironmentVariable("BASE_PATH");
+if (string.IsNullOrEmpty(BASE_PATH))
+    {
+        BASE_PATH = "/";
+    }
+if (BASE_PATH != "/")
+{
+    if (!BASE_PATH.StartsWith("/") || !BASE_PATH.EndsWith("/"))
+    {
+        Console.Error.WriteLine("Error: BASE_PATH must start and end with a slash (e.g., '/demo/' or '/').");
+        Environment.Exit(1);
+    }
+
+    // Check for double consecutive slashes.
+    if (BASE_PATH.Contains("//"))
+    {
+        Console.Error.WriteLine("Error: BASE_PATH must not contain double consecutive slashes.");
+        Environment.Exit(1);
+    }
+}
+app.UsePathBase(BASE_PATH);
 File.WriteAllText("empty_x_startup", "#!/bin/sh\nexec tail -f /dev/null");
 File.SetUnixFileMode("empty_x_startup", File.GetUnixFileMode("empty_x_startup") | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
 
@@ -156,7 +177,7 @@ ActiveSessions StartSession(string cookie, string procName) {
     })!;
     Process wsProc;
     if(WEBSOCKIFY=="websockify-rs") {
-    wsProc = Process.Start(new ProcessStartInfo("websockify-rs", $"--listen-unix=ws-{wsPort} --upstream-unix=unix-{vncPort}") { UseShellExecute = false })!;
+    wsProc = Process.Start(new ProcessStartInfo("websockify-rs", $"unix-{vncPort} ws-{wsPort} --listen-unix --upstream-unix") { UseShellExecute = false })!;
     }
     else{
     wsProc = Process.Start(new ProcessStartInfo("websockify", $"--unix-listen=ws-{wsPort} --unix-target=unix-{vncPort}") { UseShellExecute = false })!;
@@ -232,8 +253,8 @@ app.MapGet("/", async (HttpContext context) => {
         session = sessions.First(s => s.Cookie == cookie);
         Logger.Log($"Existing session for cookie={cookie} app={targetApp}");
     }
-    await Task.Delay(2500);
-    context.Response.Redirect($"/static/vnc_lite.html?session={cookie}&path={targetApp}/ws&autoconnect=true");
+    await Task.Delay(1500);
+    context.Response.Redirect($"{BASE_PATH}static/vnc_lite.html?session={cookie}&path={BASE_PATH}{targetApp}/ws&autoconnect=true");
 });
 
 // WS forwarder endpoint: not directly seen by the user, only by vnc_lite.html.
