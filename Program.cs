@@ -19,7 +19,7 @@ using System.Text; // Needed for Encoding.ASCII in the handshake
 // Top-level statements (all types come after)
 // ----------------------------------------------------------------
 
-const int KILL_WAIT = 15;
+const int KILL_WAIT = 150;
 string defaultApp = "xclock"; // why: default safe app
 string[] approvedCommands = new string[] { "xeyes", "xclock", "scalc" }; // why: restrict allowed commands
 List<ActiveSessions> sessions = new();
@@ -172,27 +172,39 @@ async Task<ActiveSessions> StartSession(string cookie, string procName) {
     {
         UseShellExecute = false,
     };
-    swayPsi.Environment["SWAYSOCK"] = $"{Path.Combine(Directory.GetCurrentDirectory(),"wl-")}{display}.swaysock";
+    //swayPsi.Environment["SWAYSOCK"] = $"{Path.Combine(Directory.GetCurrentDirectory(),"wl-")}{display}.swaysock";
     string RTDir = $"{Path.Combine(Directory.GetCurrentDirectory(),"wl-")}{display}";
     string RTSock = $"{RTDir}.swaysock";
+    swayPsi.Environment["SWAYSOCK"] = $"{RTSock}";
     Console.WriteLine($"{swayPsi.Environment["SWAYSOCK"]}");
     swayPsi.Environment["XDG_RUNTIME_DIR"] = $"{RTDir}";
     swayPsi.Environment["WLR_BACKENDS"] = "headless";
     swayPsi.Environment["WLR_RENDERER"] = "pixman";
     swayPsi.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
-    Directory.CreateDirectory($"{RTDir}");
+    try{Directory.CreateDirectory($"{RTDir}");}catch{};
     var vnc = Process.Start(swayPsi)!;
     // One-liner swaymsg commands:
     // Launch wayvnc with its UNIX socket set to "unix-{vncPort}.vncsock".
     if (!WaitForUnixSocketOpen($"{RTSock}"))
-        Logger.Log($"Warning: Wayland server on port unix-{RTSock} did not open");
+        Logger.Log($"Warning: Wayland server on port {RTSock} did not open");
     await Task.Delay(200);
-    Process.Start(new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"wayvnc --unix-socket {Path.Combine(Directory.GetCurrentDirectory(),"unix-")}{vncPort}\"") { UseShellExecute = false });
+    var wayVncLauncher = new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"wayvnc --unix-socket {Path.Combine(Directory.GetCurrentDirectory(),"unix-")}{vncPort}\"") { UseShellExecute = false };
+    wayVncLauncher.Environment["SWAYSOCK"] = $"{RTSock}";
+    Console.WriteLine($"{swayPsi.Environment["SWAYSOCK"]}");
+    wayVncLauncher.Environment["XDG_RUNTIME_DIR"] = $"{RTDir}";
+    wayVncLauncher.Environment["WLR_BACKENDS"] = "headless";
+    wayVncLauncher.Environment["WLR_RENDERER"] = "pixman";
+    wayVncLauncher.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
+    Console.WriteLine($"Starting wayvnc: {wayVncLauncher.FileName} {wayVncLauncher.Arguments}");
+    Process.Start(wayVncLauncher);
+    Console.WriteLine("Started wayvnc");
+    await Task.Delay(200);
     if (!WaitForUnixSocketOpen($"unix-{vncPort}"))
         Logger.Log($"Warning: vnc server on port unix-{vncPort} did not open");
     var appProc = Process.Start(new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"{procName}\"") {
         UseShellExecute = false,
     })!;
+    await Task.Delay(50);
     Process wsProc;
     if(WEBSOCKIFY=="websockify-rs") {
     wsProc = Process.Start(new ProcessStartInfo("websockify-rs", $"unix-{vncPort} ws-{wsPort} --listen-unix --upstream-unix") { UseShellExecute = false })!;
@@ -241,8 +253,10 @@ _ = Task.Run(async () => {
                 Logger.Log($"Session idle: cookie={s.Cookie} idle for {(DateTime.UtcNow - s.LastActive).TotalSeconds}s; killing processes");
     		string RTDir = $"{Path.Combine(Directory.GetCurrentDirectory(),"wl-")}{s.Display}";
     		string RTSock = $"{RTDir}.swaysock";
-		try {Directory.Delete($"wl-{s.Display}", true);} catch{}
-		try {File.Delete($"wl-{s.Display}.swaysock");} catch{}
+		try {Directory.Delete($"{RTDir}", true);} catch{}
+		try {File.Delete($"{RTSock}");} catch{}
+		try {File.Delete($"unix-{s.VncPort}");} catch{}
+		try {File.Delete($"ws-{s.WebsockifyPort}");} catch{}
 		try { Console.Error.WriteLine($"Killing {s.VncProcess.Id}"); Process.Start(new ProcessStartInfo("kill", $"-KILL -- -{s.VncProcess.Id}"){UseShellExecute = false}); } catch (Exception E) {Console.Error.WriteLine(E);}
 		try { Process.Start(new ProcessStartInfo("kill", $"{s.VncProcess.Id}"){UseShellExecute=false}); } catch (Exception E) {Console.Error.WriteLine(E);}
 		try { Process.Start(new ProcessStartInfo("kill", $"{s.VncProcess.Id}"){UseShellExecute=false}); } catch (Exception E) {Console.Error.WriteLine(E);}
