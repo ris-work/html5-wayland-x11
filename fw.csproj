@@ -37,5 +37,10 @@
   </Content>
 </ItemGroup>
 
+<ItemGroup>
+  <EmbeddedResource Include="static\**\*">
+    <LogicalName>static/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+  </EmbeddedResource>
+</ItemGroup>
   
 </Project>
