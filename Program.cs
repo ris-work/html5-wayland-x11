@@ -166,7 +166,7 @@ bool WaitForUnixSocketOpen(string socketPath, int timeoutMs = 5000)
     return false;
 }
 
-ActiveSessions StartSession(string cookie, string procName) {
+async Task<ActiveSessions> StartSession(string cookie, string procName) {
     int vncPort = GetFreePort(), wsPort = GetFreePort(), display = new Random().Next(1, 100);
     var swayPsi = new ProcessStartInfo("setsid", $"sway -c /dev/null")
     {
@@ -184,18 +184,15 @@ ActiveSessions StartSession(string cookie, string procName) {
     var vnc = Process.Start(swayPsi)!;
     // One-liner swaymsg commands:
     // Launch wayvnc with its UNIX socket set to "unix-{vncPort}.vncsock".
-    //Process.Start(new ProcessStartInfo("swaymsg", $"-s {Path.Combine(Directory.GetCurrentDirectory(),"wl-")}{display}.swaysock exec \"wayvnc --unix-socket {Path.Combine(Directory.GetCurrentDirectory(),"unix-")}{vncPort}\"") { UseShellExecute = false });
-    //var vnc = Process.Start(new ProcessStartInfo("setsid", $"{vncserver} :{display} -rfbunixpath unix-{vncPort} -SecurityTypes None") { UseShellExecute = false })!;
-    if (!WaitForUnixSocketOpen($"unix-{vncPort}"))
+    if (!WaitForUnixSocketOpen($"{RTSock}"))
+        Logger.Log($"Warning: Wayland server on port unix-{RTSock} did not open");
+    await Task.Delay(200);
     Process.Start(new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"wayvnc --unix-socket {Path.Combine(Directory.GetCurrentDirectory(),"unix-")}{vncPort}\"") { UseShellExecute = false });
+    if (!WaitForUnixSocketOpen($"unix-{vncPort}"))
         Logger.Log($"Warning: vnc server on port unix-{vncPort} did not open");
-    //Process.Start(new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"wayvnc --unix-socket {Path.Combine(Directory.GetCurrentDirectory(),"unix-")}{vncPort}\"") { UseShellExecute = false });
     var appProc = Process.Start(new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"{procName}\"") {
         UseShellExecute = false,
-        //Environment = { ["DISPLAY"] = $":{display}" }
     })!;
-    //Process.Start(new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"wayvnc --unix-socket {Path.Combine(Directory.GetCurrentDirectory(),"unix-")}{vncPort}\"") { UseShellExecute = false });
-    //Process.Start(new ProcessStartInfo("swaymsg", $"-s {Path.Combine(Directory.GetCurrentDirectory(),"wl-")}{display}.swaysock exec \"wayvnc --unix-socket {Path.Combine(Directory.GetCurrentDirectory(),"unix-")}{vncPort}\"") { UseShellExecute = false });
     Process wsProc;
     if(WEBSOCKIFY=="websockify-rs") {
     wsProc = Process.Start(new ProcessStartInfo("websockify-rs", $"unix-{vncPort} ws-{wsPort} --listen-unix --upstream-unix") { UseShellExecute = false })!;
@@ -210,6 +207,7 @@ ActiveSessions StartSession(string cookie, string procName) {
         VncProcess = vnc,
         WebsockifyProcess = wsProc,
         AppProcess = appProc,
+	Display = display,
         VncPort = vncPort,
         WebsockifyPort = wsPort
     };
@@ -241,7 +239,12 @@ _ = Task.Run(async () => {
         sessions.RemoveAll(s => {
             if ((DateTime.UtcNow - s.LastActive).TotalSeconds > KILL_WAIT) {
                 Logger.Log($"Session idle: cookie={s.Cookie} idle for {(DateTime.UtcNow - s.LastActive).TotalSeconds}s; killing processes");
+    		string RTDir = $"{Path.Combine(Directory.GetCurrentDirectory(),"wl-")}{s.Display}";
+    		string RTSock = $"{RTDir}.swaysock";
+		try {Directory.Delete($"wl-{s.Display}", true);} catch{}
+		try {File.Delete($"wl-{s.Display}.swaysock");} catch{}
 		try { Console.Error.WriteLine($"Killing {s.VncProcess.Id}"); Process.Start(new ProcessStartInfo("kill", $"-KILL -- -{s.VncProcess.Id}"){UseShellExecute = false}); } catch (Exception E) {Console.Error.WriteLine(E);}
+		try { Process.Start(new ProcessStartInfo("kill", $"{s.VncProcess.Id}"){UseShellExecute=false}); } catch (Exception E) {Console.Error.WriteLine(E);}
 		try { Process.Start(new ProcessStartInfo("kill", $"{s.VncProcess.Id}"){UseShellExecute=false}); } catch (Exception E) {Console.Error.WriteLine(E);}
                 try { if (!s.WebsockifyProcess.HasExited) s.WebsockifyProcess.Kill(); } catch { }
                 try { if (!s.VncProcess.HasExited) s.VncProcess.Kill(); } catch { }
@@ -267,14 +270,14 @@ app.MapGet("/", async (HttpContext context) => {
     context.Response.Cookies.Append(sessionCookieName, cookie);
     ActiveSessions session;
     if (!sessions.Any(s => s.Cookie == cookie)) {
-        session = StartSession(cookie, targetApp);
+        session = await StartSession(cookie, targetApp);
         sessions.Add(session);
         Logger.Log($"New session for cookie={cookie} app={targetApp}");
     } else {
         session = sessions.First(s => s.Cookie == cookie);
         Logger.Log($"Existing session for cookie={cookie} app={targetApp}");
     }
-    await Task.Delay(1500);
+    await Task.Delay(1200);
     context.Response.Redirect($"{BASE_PATH}static/vnc_lite.html?session={cookie}&path={(BASE_PATH == "/" ? "" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
 });
 
@@ -301,7 +304,7 @@ app.Map("/{targetApp}/ws", async (HttpContext context) => {
     }
     int idx = sessions.FindIndex(s => s.Cookie == cookie);
     if (idx == -1) {
-        var session = StartSession(cookie, targetApp);
+        var session = await StartSession(cookie, targetApp);
         sessions.Add(session);
         idx = sessions.Count - 1;
         Logger.Log($"Session restarted for cookie={cookie} app={targetApp}");
@@ -349,6 +352,7 @@ struct ActiveSessions {
     public Process VncProcess;
     public Process WebsockifyProcess;
     public Process AppProcess;
+    public int Display;
     public int VncPort;
     public int WebsockifyPort;
 }
