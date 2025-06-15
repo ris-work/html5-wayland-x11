@@ -142,6 +142,19 @@ bool WaitForPortOpen(int port, int timeoutMs = 5000) {
     }
     return false;
 }
+bool WaitForFileCreation(string filePath, int timeoutMs = 5000)
+{
+    var sw = Stopwatch.StartNew();
+    while (sw.ElapsedMilliseconds < timeoutMs)
+    {
+        if (File.Exists(filePath))
+        {
+            return true;
+        }
+        Thread.Sleep(100);
+    }
+    return false;
+}
 bool WaitForUnixSocketOpen(string socketPath, int timeoutMs = 5000)
 {
     var sw = Stopwatch.StartNew();
@@ -168,13 +181,14 @@ bool WaitForUnixSocketOpen(string socketPath, int timeoutMs = 5000)
 
 async Task<ActiveSessions> StartSession(string cookie, string procName) {
     int vncPort = GetFreePort(), wsPort = GetFreePort(), display = new Random().Next(1, 100);
+    string RTDir = $"{Path.Combine(Directory.GetCurrentDirectory(),"wl-")}{display}";
+    string RTSock = $"{RTDir}.swaysock";
+    string WLSock = $"{RTDir}.wlsock";
     var swayPsi = new ProcessStartInfo("setsid", $"sway -c /dev/null")
     {
         UseShellExecute = false,
     };
     //swayPsi.Environment["SWAYSOCK"] = $"{Path.Combine(Directory.GetCurrentDirectory(),"wl-")}{display}.swaysock";
-    string RTDir = $"{Path.Combine(Directory.GetCurrentDirectory(),"wl-")}{display}";
-    string RTSock = $"{RTDir}.swaysock";
     swayPsi.Environment["SWAYSOCK"] = $"{RTSock}";
     Console.WriteLine($"{swayPsi.Environment["SWAYSOCK"]}");
     swayPsi.Environment["XDG_RUNTIME_DIR"] = $"{RTDir}";
@@ -187,19 +201,20 @@ async Task<ActiveSessions> StartSession(string cookie, string procName) {
     // Launch wayvnc with its UNIX socket set to "unix-{vncPort}.vncsock".
     if (!WaitForUnixSocketOpen($"{RTSock}"))
         Logger.Log($"Warning: Wayland server on port {RTSock} did not open");
-    await Task.Delay(200);
-    var wayVncLauncher = new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"wayvnc --unix-socket {Path.Combine(Directory.GetCurrentDirectory(),"unix-")}{vncPort}\"") { UseShellExecute = false };
-    wayVncLauncher.Environment["SWAYSOCK"] = $"{RTSock}";
-    Console.WriteLine($"{swayPsi.Environment["SWAYSOCK"]}");
-    wayVncLauncher.Environment["XDG_RUNTIME_DIR"] = $"{RTDir}";
+    await Task.Delay(1000);
+    var wayVncLauncher = new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"wayvnc -v -C /dev/null --unix-socket {Path.Combine(Directory.GetCurrentDirectory(),"unix-")}{vncPort}\" 2>&1 >{RTSock}.log") { UseShellExecute = false };
+    //wayVncLauncher.Environment["SWAYSOCK"] = $"{RTSock}";
+    //Console.WriteLine($"{swayPsi.Environment["SWAYSOCK"]}");
+    //wayVncLauncher.Environment["XDG_RUNTIME_DIR"] = $"{RTDir}";
     wayVncLauncher.Environment["WLR_BACKENDS"] = "headless";
-    wayVncLauncher.Environment["WLR_RENDERER"] = "pixman";
+    //wayVncLauncher.Environment["WLR_RENDERER"] = "pixman";
     wayVncLauncher.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
+    //wayVncLauncher.Environment["WAYLAND_DISPLAY"] = $"{WLSock}";
     Console.WriteLine($"Starting wayvnc: {wayVncLauncher.FileName} {wayVncLauncher.Arguments}");
     Process.Start(wayVncLauncher);
     Console.WriteLine("Started wayvnc");
-    await Task.Delay(200);
-    if (!WaitForUnixSocketOpen($"unix-{vncPort}"))
+    await Task.Delay(100);
+    if (!WaitForFileCreation($"unix-{vncPort}"))
         Logger.Log($"Warning: vnc server on port unix-{vncPort} did not open");
     var appProc = Process.Start(new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"{procName}\"") {
         UseShellExecute = false,
@@ -291,7 +306,7 @@ app.MapGet("/", async (HttpContext context) => {
         session = sessions.First(s => s.Cookie == cookie);
         Logger.Log($"Existing session for cookie={cookie} app={targetApp}");
     }
-    await Task.Delay(1200);
+    await Task.Delay(150);
     context.Response.Redirect($"{BASE_PATH}static/vnc_lite.html?session={cookie}&path={(BASE_PATH == "/" ? "" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
 });
 
