@@ -30,12 +30,19 @@
   <!-- Include all files under static/ in the publish output -->
   <Content Include="static\**\*">
     <!-- Ensures the files are copied on build and available after publish -->
-    <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+	  <CopyToPublishDirectory>Never</CopyToPublishDirectory>
     <!-- For single-file publish, setting this false means the file is embedded
          (and then extracted at runtime) rather than placed alongside the exe -->
     <ExcludeFromSingleFile>false</ExcludeFromSingleFile>
   </Content>
 </ItemGroup>
+
+<ItemGroup>
+  <EmbeddedResource Include="static\**\*">
+    <LogicalName>static/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+  </EmbeddedResource>
+</ItemGroup>
+
 
   
 </Project>

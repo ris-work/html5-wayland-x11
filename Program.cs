@@ -9,6 +9,7 @@ using System.Net.WebSockets;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Reflection;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
@@ -21,7 +22,7 @@ using System.Text; // Needed for Encoding.ASCII in the handshake
 
 const int KILL_WAIT = 150;
 string defaultApp = "xclock"; // why: default safe app
-string[] approvedCommands = new string[] { "xeyes", "xclock", "scalc" }; // why: restrict allowed commands
+string[] approvedCommands = new string[] { "xeyes", "xclock", "scalc", "vkcube", "glxgears", "xgc", "oclock", "ico", "xcalc" }; // why: restrict allowed commands
 List<ActiveSessions> sessions = new();
 Logger.Debug = false; // why: enable logging
 
@@ -70,6 +71,39 @@ app.UsePathBase(BASE_PATH);
 File.WriteAllText("empty_x_startup", "#!/bin/sh\nexec tail -f /dev/null");
 File.SetUnixFileMode("empty_x_startup", File.GetUnixFileMode("empty_x_startup") | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
 
+static void ExtractAllStaticResources(string destFolder)
+{
+    Directory.CreateDirectory(destFolder);
+    Assembly asm = Assembly.GetExecutingAssembly();
+    const string prefix = "static/"; // Must match the LogicalName prefix
+
+    foreach (string resource in asm.GetManifestResourceNames())
+    {
+        if (!resource.StartsWith(prefix)) continue;
+
+        // Compute relative path by stripping the prefix.
+        string relativePath = resource.Substring(prefix.Length);
+        string outPath = Path.Combine(destFolder, relativePath);
+
+        // Skip if the file already exists.
+        if (File.Exists(outPath)) continue;
+
+        Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
+        using Stream resStream = asm.GetManifestResourceStream(resource)
+            ?? throw new Exception($"Resource '{resource}' not found.");
+        using FileStream fileStream = File.Create(outPath);
+        resStream.CopyTo(fileStream);
+    }
+}
+
+// Create a secure canonical temporary folder.
+var tempDir = Path.Combine(Path.GetTempPath(), "MyAppStatic", Guid.NewGuid().ToString("N"));
+
+// Extract all static resources.
+ExtractAllStaticResources(tempDir);
+Console.WriteLine($"Static resources extracted to: {tempDir}");
+
+Console.WriteLine($"Static resources extracted to: {tempDir}");
 
 app.Use(async (context, next) =>
 {
@@ -102,6 +136,11 @@ if (!Directory.Exists(staticDir))
     // Fallback to the extraction directory (typically AppContext.BaseDirectory)
     baseDir = AppContext.BaseDirectory;
     staticDir = Path.Combine(baseDir, "static");
+    if(!Directory.Exists(staticDir)){
+        baseDir = tempDir;
+        staticDir = baseDir;
+    }
+    System.Console.WriteLine($"Base directory: {staticDir}");
 }
 
 // why: serve static files with correct MIME for .js files
@@ -195,6 +234,7 @@ async Task<ActiveSessions> StartSession(string cookie, string procName) {
     swayPsi.Environment["WLR_BACKENDS"] = "headless";
     swayPsi.Environment["WLR_RENDERER"] = "pixman";
     swayPsi.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
+    swayPsi.Environment["MESA_LOADER_DEIVER_OVERRIDE"] = "llvmpipe";
     try{Directory.CreateDirectory($"{RTDir}");}catch{};
     var vnc = Process.Start(swayPsi)!;
     // One-liner swaymsg commands:
