@@ -128,22 +128,6 @@ app.Use(async (context, next) =>
     await next();
 });
 
-// why: normalize duplicate slashes
-app.Use(async (context, next) =>
-{
-    if (!string.IsNullOrWhiteSpace(context.Request.Path.Value))
-    {
-        string original = context.Request.Path.Value;
-        string normalized = Regex.Replace(original, "/+", "/");
-        if (normalized != original)
-        {
-            Logger.Log($"Normalized path from '{original}' to '{normalized}'");
-            context.Request.Path = new PathString(normalized);
-        }
-    }
-    await next();
-});
-
 // Determine the base directory
 var baseDir = Directory.GetCurrentDirectory();
 var staticDir = Path.Combine(baseDir, "static");
@@ -169,7 +153,7 @@ app.UseStaticFiles(new StaticFileOptions {
     RequestPath = "/static",
     ContentTypeProvider = provider
 });
-app.UseWebSockets();
+//app.UseWebSockets();
 
 // why: on shutdown, force all sessions to quit
 app.Lifetime.ApplicationStopping.Register(() => {
@@ -180,6 +164,25 @@ app.Lifetime.ApplicationStopping.Register(() => {
         try { if (!s.AppProcess.HasExited) s.AppProcess.Kill(); } catch { }
     }
 });
+// Custom middleware to normalize multiple slashes to a single slash and log changes.
+app.Use(async (context, next) =>
+{
+    //System.Console.WriteLine($"Request path: {context.Request.Path.Value} {context.Request.Path.Value.GetType()}");
+    if (context.Request.Path.Value is string path && path.Contains("//"))
+    {
+        System.Console.WriteLine($"Normalized request path from {path}");
+        var newPath = Regex.Replace(path, @"[/]+", "/");
+        if (newPath != path)
+        {
+            // Log the normalization event
+            app.Logger.LogInformation($"Normalized request path from {path} to {newPath}");
+            //System.Console.WriteLine($"Normalized request path from {path} to {newPath}");
+            context.Request.Path = newPath;
+        }
+    }
+    await next();
+});
+app.UseWebSockets();
 
 bool Authenticate(string cookie) => true;
 int GetFreePort() {
