@@ -104,10 +104,12 @@ if (!Directory.Exists(sharedFolder))
 }
 
 // Explicitly set permissions to 0777 (rwx for user, group, and others).
+try{
 var mode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
            UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute |
            UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute;
 File.SetUnixFileMode(sharedFolder, mode);
+}catch {}
 // Create a secure canonical temporary folder.
 //var tempDir = Path.Combine(Path.GetTempPath(), "MyAppStatic", Guid.NewGuid().ToString("N"));
 var tempDir = Path.Combine(sharedFolder, Environment.UserName, Guid.NewGuid().ToString("N"));
