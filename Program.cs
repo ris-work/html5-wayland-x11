@@ -116,22 +116,6 @@ app.Use(async (context, next) =>
     await next();
 });
 
-// why: normalize duplicate slashes
-app.Use(async (context, next) =>
-{
-    if (!string.IsNullOrWhiteSpace(context.Request.Path.Value))
-    {
-        string original = context.Request.Path.Value;
-        string normalized = Regex.Replace(original, "/+", "/");
-        if (normalized != original)
-        {
-            Logger.Log($"Normalized path from '{original}' to '{normalized}'");
-            context.Request.Path = new PathString(normalized);
-        }
-    }
-    await next();
-});
-
 // Determine the base directory
 var baseDir = Directory.GetCurrentDirectory();
 var staticDir = Path.Combine(baseDir, "static");
@@ -157,7 +141,7 @@ app.UseStaticFiles(new StaticFileOptions {
     RequestPath = "/static",
     ContentTypeProvider = provider
 });
-app.UseWebSockets();
+//app.UseWebSockets();
 
 // why: on shutdown, force all sessions to quit
 app.Lifetime.ApplicationStopping.Register(() => {
@@ -330,6 +314,26 @@ _ = Task.Run(async () => {
     }
 });
 
+// Custom middleware to normalize multiple slashes to a single slash and log changes.
+app.Use(async (context, next) =>
+{
+    //System.Console.WriteLine($"Request path: {context.Request.Path.Value} {context.Request.Path.Value.GetType()}");
+    if (context.Request.Path.Value is string path && path.Contains("//"))
+    {
+        System.Console.WriteLine($"Normalized request path from {path}");
+        var newPath = Regex.Replace(path, @"[/]+", "/");
+        if (newPath != path)
+        {
+            // Log the normalization event
+            app.Logger.LogInformation($"Normalized request path from {path} to {newPath}");
+            //System.Console.WriteLine($"Normalized request path from {path} to {newPath}");
+            context.Request.Path = newPath;
+        }
+    }
+    await next();
+});
+app.UseWebSockets();
+
 // GET "/" route: redirect user only to vnc_lite.html (WS endpoint is passed as querystring without leading slash)
 app.MapGet("/", async (HttpContext context) => {
     string targetApp = context.Request.Query["app"];
@@ -356,7 +360,8 @@ app.MapGet("/", async (HttpContext context) => {
 });
 
 // WS forwarder endpoint: not directly seen by the user, only by vnc_lite.html.
-app.Map("/{targetApp}/ws", async (HttpContext context) => {
+var WsHandler = async (HttpContext context) => {
+    Console.WriteLine("Endpoint hit: targetApp/ws");
     string targetApp = (string?)context.Request.RouteValues["targetApp"] ?? defaultApp;
     if (!approvedCommands.Contains(targetApp)) {
         Logger.Log($"Disallowed app in WS: '{targetApp}', defaulting to {defaultApp}");
@@ -413,7 +418,38 @@ app.Map("/{targetApp}/ws", async (HttpContext context) => {
         }
         Logger.Log($"WS closed for cookie={cookie} in app={targetApp}");
     }
+};
+app.Map("/{targetApp}/ws", WsHandler);
+// Catch-All route to pick up malformed URLs like ////targetApp/ws.
+app.Map("/{*catchall}", async (HttpContext context) =>
+{
+    // Attempt to access the original RawTarget (if available) to see the clients input.
+    string rawTarget = context.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpRequestFeature>()?.RawTarget
+                       ?? context.Request.Path.Value;
+
+    // Split by '/' and remove empty entries.
+    var segments = rawTarget.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+    // Expecting at least two segments: targetApp and "ws".
+    // This covers cases like "////targetApp/ws" (which becomes ["targetApp", "ws"] after removing empties).
+    if (segments.Length >= 2 && segments[1].Equals("ws", StringComparison.OrdinalIgnoreCase))
+    {
+        // Rebuild a normalized path.
+        string normalizedPath = $"/{segments[0]}/ws";
+        context.Request.Path = normalizedPath;
+        // Set the route value for targetApp so wsHandler can access it.
+        context.Request.RouteValues["targetApp"] = segments[0];
+
+        // Delegate to the common wsHandler.
+        await WsHandler(context);
+        return;
+    }
+
+    // For any other catch-all that doesnt match our expected pattern, return a 404.
+    context.Response.StatusCode = StatusCodes.Status404NotFound;
+    await context.Response.WriteAsync("Not Found");
 });
+
 app.Run();
 
 // ----------------------------------------------------------------
