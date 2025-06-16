@@ -32,7 +32,11 @@ var app = builder.Build();
 var vncserver = "Xtigervnc";
 // Retrieve the DEFAULT_PROGRAM_NAME environment variable.
 // If it is not provided or is empty, default to "xeyes".
+string RESOLUTION_WIDTH = Environment.GetEnvironmentVariable("RESOLUTION_WIDTH");
+string RESOLUTION_HEIGHT = Environment.GetEnvironmentVariable("RESOLUTION_HEIGHT");
 string DEFAULT_PROGRAM_NAME = Environment.GetEnvironmentVariable("DEFAULT_PROGRAM_NAME");
+int W = int.Parse(RESOLUTION_WIDTH ?? "1024");
+int H = int.Parse(RESOLUTION_HEIGHT ?? "768");
 approvedCommands = approvedCommands.ToList().Append(DEFAULT_PROGRAM_NAME).ToArray();
 if (string.IsNullOrEmpty(DEFAULT_PROGRAM_NAME))
     {
@@ -220,7 +224,7 @@ bool WaitForUnixSocketOpen(string socketPath, int timeoutMs = 5000)
 
 ActiveSessions StartSession(string cookie, string procName) {
     int vncPort = GetFreePort(), wsPort = GetFreePort(), display = new Random().Next(1, 100);
-    var vnc = Process.Start(new ProcessStartInfo("setsid", $"{vncserver} :{display} -rfbunixpath unix-{vncPort} -SecurityTypes None") { UseShellExecute = false })!;
+    var vnc = Process.Start(new ProcessStartInfo("setsid", $"{vncserver} :{display} -rfbunixpath unix-{vncPort} -SecurityTypes None -geometry {W}x{H}") { UseShellExecute = false })!;
     if (!WaitForUnixSocketOpen($"unix-{vncPort}"))
         Logger.Log($"Warning: vnc server on port unix-{vncPort} did not open");
     var appProc = Process.Start(new ProcessStartInfo(procName) {
