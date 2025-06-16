@@ -29,10 +29,14 @@ Logger.Debug = false; // why: enable logging
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
-var vncserver = "Xtigervnc";
+var vncserver = ""; //We don't have any, we use the compositor
 // Retrieve the DEFAULT_PROGRAM_NAME environment variable.
 // If it is not provided or is empty, default to "xeyes".
+string RESOLUTION_WIDTH = Environment.GetEnvironmentVariable("RESOLUTION_WIDTH");
+string RESOLUTION_HEIGHT = Environment.GetEnvironmentVariable("RESOLUTION_HEIGHT");
 string DEFAULT_PROGRAM_NAME = Environment.GetEnvironmentVariable("DEFAULT_PROGRAM_NAME");
+int W = int.Parse(RESOLUTION_WIDTH ?? "1024");
+int H = int.Parse(RESOLUTION_HEIGHT ?? "768");
 approvedCommands = approvedCommands.ToList().Append(DEFAULT_PROGRAM_NAME).ToArray();
 if (string.IsNullOrEmpty(DEFAULT_PROGRAM_NAME))
     {
@@ -69,6 +73,7 @@ if (BASE_PATH != "/")
 }
 app.UsePathBase(BASE_PATH);
 File.WriteAllText("empty_x_startup", "#!/bin/sh\nexec tail -f /dev/null");
+File.WriteAllText("empty_sway_startup", $"output * resolution {W}x{H} bg #008080 solid_color");
 File.SetUnixFileMode("empty_x_startup", File.GetUnixFileMode("empty_x_startup") | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
 
 static void ExtractAllStaticResources(string destFolder)
@@ -223,7 +228,7 @@ async Task<ActiveSessions> StartSession(string cookie, string procName) {
     string RTDir = $"{Path.Combine(Directory.GetCurrentDirectory(),"wl-")}{display}";
     string RTSock = $"{RTDir}.swaysock";
     string WLSock = $"{RTDir}.wlsock";
-    var swayPsi = new ProcessStartInfo("setsid", $"sway -c /dev/null")
+    var swayPsi = new ProcessStartInfo("setsid", $"sway -c empty_sway_startup")
     {
         UseShellExecute = false,
     };
