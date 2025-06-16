@@ -20,7 +20,7 @@ using System.Text; // Needed for Encoding.ASCII in the handshake
 // Top-level statements (all types come after)
 // ----------------------------------------------------------------
 
-const int KILL_WAIT = 15;
+const int KILL_WAIT = 45;
 string defaultApp = "xclock"; // why: default safe app
 string[] approvedCommands = new string[] { "xeyes", "xclock", "scalc", "vkcube", "glxgears", "xgc", "oclock", "ico", "xcalc", "abuse", "a7xpg", "gunroar", "rrootage", "noiz2sa" }; // why: restrict allowed commands
 List<ActiveSessions> sessions = new();
@@ -96,8 +96,21 @@ static void ExtractAllStaticResources(string destFolder)
     }
 }
 
+// Create or get the shared folder.
+var sharedFolder = Path.Combine(Path.GetTempPath(), "MyAppStatic");
+if (!Directory.Exists(sharedFolder))
+{
+    Directory.CreateDirectory(sharedFolder);
+}
+
+// Explicitly set permissions to 0777 (rwx for user, group, and others).
+var mode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+           UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute |
+           UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute;
+File.SetUnixFileMode(sharedFolder, mode);
 // Create a secure canonical temporary folder.
-var tempDir = Path.Combine(Path.GetTempPath(), "MyAppStatic", Guid.NewGuid().ToString("N"));
+//var tempDir = Path.Combine(Path.GetTempPath(), "MyAppStatic", Guid.NewGuid().ToString("N"));
+var tempDir = Path.Combine(sharedFolder, Environment.UserName, Guid.NewGuid().ToString("N"));
 
 // Extract all static resources.
 ExtractAllStaticResources(tempDir);
