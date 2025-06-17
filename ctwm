@@ -49,3 +49,9 @@ ResizeFont	"-adobe-helvetica-bold-r-normal--*-120-*-*-*-*-*-*"
 MenuFont	"-adobe-helvetica-bold-r-normal--*-120-*-*-*-*-*-*"
 IconFont	"-adobe-helvetica-bold-r-normal--*-100-*-*-*-*-*-*"
 IconManagerFont	"-adobe-helvetica-bold-r-normal--*-100-*-*-*"
+# --- only one workspace, no manager pixmap, Win95-green background ---
+WorkSpaces
+{
+    #  Name   MC         MTC        BC         FC       (optional pixmap/file)
+    "1"   { "#000000"  "#BEBABE"  "#008080"  "white" }  # "#00FF00"
+}
