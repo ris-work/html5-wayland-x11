@@ -1,26 +1,8 @@
 # ~/.twmrc - barebones host, Win2K colours, auto-place, close button
 
 Menu "Root" {}
-
-# Disable root-click (each on its own line)
-#Button1 = None
-#Button2 = None
-#Button3 = None
-
-# Win2K colour scheme
 BorderWidth 2
-#BorderColor "gray50"
-#RootBackground "blue"
 TitleFont "-*-helvetica-bold-r-*-*-12-*-*-*-*-*-*-*"
-#TitleBackground "#0A246A"
-#TitleForeground "#FFFFFF"
-#TitleShadowColor "#000000"
-
-# Close button configuration
-#TitleButtons 3
-#TitleButton 1 0 2 25 18 "X" Kill
-#TitleButton 2 30 2 25 18 "I" Iconify
-#TitleButton 3 60 2 25 18 "N" Nop
 RightTitleButton "Fold" = f.delete
 RightTitleButton "Fold" = f.delete
 LeftTitleButton "boxes" = f.move
@@ -29,28 +11,7 @@ NoDefaults
 
 UseThreeDBorders
 UseThreeDTitles
-
-
-# Auto-placement directives
-#PPosition
-#XPPosition
 RandomPlacement
-#DontOverlap
-
-# Titlebar actions:
-# Button1: raise window and initiate move.
-# Button2: raise window and initiate resize.
-# Button3: simply raise the window.
-#Button1 = Title move
-#Button2 = Title resize
-#Button3 = Title f.nop
-
-# Client (window) area actions: raise the window on a click.
-#Button1 = Window raise
-#Button2 = Window raise
-#Button3 = Window raise
-
-# Enable click-to-focus (if supported by your build)
 ClickToFocus
 
 MoveDelta 3
@@ -62,12 +23,9 @@ Button2 =	: title		: f.raiselower
 Button1 = m     : title		: f.movetitlebar
 Button1 = 	: window		: f.raise
 Color{
-#TitleShadowColor "#000000"
 BorderColor "gray50"
-#RootBackground "blue"
 TitleBackground "#0A246A"
 TitleForeground "#FFFFFF"
-#TitleShadowColor "#000000"
 DefaultBackground     "Black"
 DefaultForeground     "White"
 TitleBackground       "gray65"
