@@ -10,10 +10,10 @@ Button3 = None
 # Win2K colour scheme
 BorderWidth 2
 BorderColor "#808080"
-RootBackground "#C0C0C0"
+RootBackground "Blue"
 TitleFont "-*-helvetica-bold-r-*-*-12-*-*-*-*-*-*-*"
-TitleBackground "#0A246A"
-TitleForeground "#FFFFFF"
+#TitleBackground "#0A246A"
+#TitleForeground "#FFFFFF"
 TitleShadowColor "#000000"
 
 # Close button configuration
@@ -21,10 +21,11 @@ TitleShadowColor "#000000"
 #TitleButton 1 0 2 25 18 "X" Kill
 #TitleButton 2 30 2 25 18 "I" Iconify
 #TitleButton 3 60 2 25 18 "N" Nop
-RightTitleButton ":xlogo" = f.delete
-RightTitleButton ":xlogo" = f.delete
-RightTitleButton ":escherknot" = f.move
+RightTitleButton "Fold" = f.delete
+RightTitleButton "Fold" = f.delete
+LeftTitleButton "boxes" = f.move
 NoTitleFocus
+NoDefaults
 
 UseThreeDBorders
 UseThreeDTitles
@@ -52,3 +53,32 @@ Button3 = Window raise
 # Enable click-to-focus (if supported by your build)
 ClickToFocus
 
+MoveDelta 3
+Function "move-or-lower" { f.move f.deltastop f.lower }
+Function "move-or-raise" { f.move f.deltastop f.raise }
+Function "move-or-iconify" { f.move f.deltastop f.iconify }
+Button1 =	: title		: f.function "move-or-raise"
+Button2 =	: title		: f.raiselower
+Button1 = m     : title		: f.movetitlebar
+DefaultBackground     "Black"
+DefaultForeground     "White"
+TitleBackground       "gray65"
+MapWindowBackground   "gray65"	
+MapWindowForeground   "Black"		
+TitleButtonShadowDepth    1
+TitleShadowDepth          1
+TitleButtonBorderWidth    0
+TitlePadding              2		# frame around TBobjects?
+ButtonIndent              0		# indentated TBbuttons?		
+FramePadding		  2		# frame around TB?
+TitleJustification        "left"	# right/left/center
+Borderwidth               2
+BorderShadowDepth         4
+Button1 =	: frame		: f.resize
+Button1 = m	: frame		: f.move
+Button2 =	: frame		: f.raiselower
+TitleFont	"-adobe-helvetica-bold-r-normal--*-120-*-*-*-*-*-*"
+ResizeFont	"-adobe-helvetica-bold-r-normal--*-120-*-*-*-*-*-*"
+MenuFont	"-adobe-helvetica-bold-r-normal--*-120-*-*-*-*-*-*"
+IconFont	"-adobe-helvetica-bold-r-normal--*-100-*-*-*-*-*-*"
+IconManagerFont	"-adobe-helvetica-bold-r-normal--*-100-*-*-*"
