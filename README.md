@@ -6,6 +6,8 @@ To run your desktop apps through the browser. Securely, in a Kiosk mode. It is u
  - emergency/backup access to an app  
  - remote access in general  
 
+![Screen Recording - Multiple Windows](demos/single.gif)
+
 ## What is this?
 This is a program that is terse and can be used to automatically setup and teardown and manage X11 sessions through noVNC. This, in effect, allows you to run specific comamnds and display them in your browser. 
 In the `uds` branch, there is a config file for `ctwm` that disables all menus and gives typical Microsoft Windows (R)-like behaviour.   
@@ -43,6 +45,7 @@ xclock &
 xcalc &
 ```  
 Don't forget to `chmod +x default_program`!    
+![Screen Recording - Multiple Windows](demos/multi.gif)
 
 ### TLS/SSL
 Ideally usable from an Apache Web Server reverse HTTPS proxy.
