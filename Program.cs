@@ -374,7 +374,7 @@ app.MapGet("/", async (HttpContext context) => {
         Logger.Log($"Existing session for cookie={cookie} app={targetApp}");
     }
     await Task.Delay(150);
-    context.Response.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
+    context.Response.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
 });
 
 // WS forwarder endpoint: not directly seen by the user, only by vnc_lite.html.
