@@ -32,11 +32,13 @@ var app = builder.Build();
 var vncserver = "Xtigervnc";
 // Retrieve the DEFAULT_PROGRAM_NAME environment variable.
 // If it is not provided or is empty, default to "xeyes".
-string RESOLUTION_WIDTH = Environment.GetEnvironmentVariable("RESOLUTION_WIDTH");
-string RESOLUTION_HEIGHT = Environment.GetEnvironmentVariable("RESOLUTION_HEIGHT");
-string DEFAULT_PROGRAM_NAME = Environment.GetEnvironmentVariable("DEFAULT_PROGRAM_NAME");
+string? RESOLUTION_WIDTH = Environment.GetEnvironmentVariable("RESOLUTION_WIDTH");
+string? RESOLUTION_HEIGHT = Environment.GetEnvironmentVariable("RESOLUTION_HEIGHT");
+string? DEFAULT_PROGRAM_NAME = Environment.GetEnvironmentVariable("DEFAULT_PROGRAM_NAME");
+string? PAGE = Environment.GetEnvironmentVariable("PAGE");
 int W = int.Parse(RESOLUTION_WIDTH ?? "1024");
 int H = int.Parse(RESOLUTION_HEIGHT ?? "768");
+if(PAGE == null) PAGE="vnc_lite.html";
 approvedCommands = approvedCommands.ToList().Append(DEFAULT_PROGRAM_NAME).ToArray();
 if (string.IsNullOrEmpty(DEFAULT_PROGRAM_NAME))
     {
@@ -313,7 +315,7 @@ app.MapGet("/", async (HttpContext context) => {
         Logger.Log($"Existing session for cookie={cookie} app={targetApp}");
     }
     await Task.Delay(1500);
-    context.Response.Redirect($"{BASE_PATH}static/vnc_lite.html?session={cookie}&path={(BASE_PATH == "/" ? "" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
+    context.Response.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
 });
 
 // WS forwarder endpoint: not directly seen by the user, only by vnc_lite.html.
