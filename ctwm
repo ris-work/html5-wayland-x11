@@ -5,6 +5,7 @@ BorderWidth 2
 TitleFont "-*-helvetica-bold-r-*-*-12-*-*-*-*-*-*-*"
 RightTitleButton "Fold" = f.delete
 RightTitleButton "Fold" = f.delete
+RightTitleButton "star" = f.resize
 LeftTitleButton "boxes" = f.move
 NoTitleFocus
 NoDefaults
@@ -21,7 +22,8 @@ Function "move-or-iconify" { f.move f.deltastop f.iconify }
 Button1 =	: title		: f.function "move-or-raise"
 Button2 =	: title		: f.raiselower
 Button1 = m     : title		: f.movetitlebar
-Button1 = 	: window		: f.raise
+Button1 =      : icon		: f.iconify
+#Button1 = 	: window		: f.raise
 Color{
 BorderColor "gray50"
 TitleBackground "#0A246A"
@@ -34,9 +36,9 @@ MapWindowForeground   "Black"
 }
 TitleButtonShadowDepth    1
 TitleShadowDepth          1
-TitleButtonBorderWidth    0
+TitleButtonBorderWidth    1
 TitlePadding              2		# frame around TBobjects?
-ButtonIndent              0		# indentated TBbuttons?		
+ButtonIndent              2		# indentated TBbuttons?		
 FramePadding		  2		# frame around TB?
 TitleJustification        "left"	# right/left/center
 Borderwidth               2
@@ -44,6 +46,7 @@ BorderShadowDepth         4
 Button1 =	: frame		: f.resize
 Button1 = m	: frame		: f.move
 Button2 =	: frame		: f.raiselower
+OpaqueMove
 TitleFont	"-adobe-helvetica-bold-r-normal--*-120-*-*-*-*-*-*"
 ResizeFont	"-adobe-helvetica-bold-r-normal--*-120-*-*-*-*-*-*"
 MenuFont	"-adobe-helvetica-bold-r-normal--*-120-*-*-*-*-*-*"
