@@ -103,8 +103,23 @@ static void ExtractAllStaticResources(string destFolder)
     }
 }
 
+// Create or get the shared folder.
+var sharedFolder = Path.Combine(Path.GetTempPath(), "MyAppStatic");
+if (!Directory.Exists(sharedFolder))
+{
+    Directory.CreateDirectory(sharedFolder);
+}
+
+// Explicitly set permissions to 0777 (rwx for user, group, and others).
+try{
+var mode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+           UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute |
+           UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute;
+File.SetUnixFileMode(sharedFolder, mode);
+}catch {}
 // Create a secure canonical temporary folder.
-var tempDir = Path.Combine(Path.GetTempPath(), "MyAppStatic", Guid.NewGuid().ToString("N"));
+//var tempDir = Path.Combine(Path.GetTempPath(), "MyAppStatic", Guid.NewGuid().ToString("N"));
+var tempDir = Path.Combine(sharedFolder, Environment.UserName, Guid.NewGuid().ToString("N"));
 
 // Extract all static resources.
 ExtractAllStaticResources(tempDir);
@@ -155,6 +170,25 @@ app.Lifetime.ApplicationStopping.Register(() => {
     }
 });
 
+// Custom middleware to normalize multiple slashes to a single slash and log changes.
+app.Use(async (context, next) =>
+{
+    //System.Console.WriteLine($"Request path: {context.Request.Path.Value} {context.Request.Path.Value.GetType()}");
+    if (context.Request.Path.Value is string path && path.Contains("//"))
+    {
+        System.Console.WriteLine($"Normalized request path from {path}");
+        var newPath = Regex.Replace(path, @"[/]+", "/");
+        if (newPath != path)
+        {
+            // Log the normalization event
+            app.Logger.LogInformation($"Normalized request path from {path} to {newPath}");
+            //System.Console.WriteLine($"Normalized request path from {path} to {newPath}");
+            context.Request.Path = newPath;
+        }
+    }
+    await next();
+});
+app.UseWebSockets();
 bool Authenticate(string cookie) => true;
 int GetFreePort() {
     using var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -316,24 +350,6 @@ _ = Task.Run(async () => {
     }
 });
 
-// Custom middleware to normalize multiple slashes to a single slash and log changes.
-app.Use(async (context, next) =>
-{
-    //System.Console.WriteLine($"Request path: {context.Request.Path.Value} {context.Request.Path.Value.GetType()}");
-    if (context.Request.Path.Value is string path && path.Contains("//"))
-    {
-        System.Console.WriteLine($"Normalized request path from {path}");
-        var newPath = Regex.Replace(path, @"[/]+", "/");
-        if (newPath != path)
-        {
-            // Log the normalization event
-            app.Logger.LogInformation($"Normalized request path from {path} to {newPath}");
-            //System.Console.WriteLine($"Normalized request path from {path} to {newPath}");
-            context.Request.Path = newPath;
-        }
-    }
-    await next();
-});
 app.UseWebSockets();
 
 // GET "/" route: redirect user only to vnc_lite.html (WS endpoint is passed as querystring without leading slash)
@@ -423,31 +439,44 @@ var WsHandler = async (HttpContext context) => {
 };
 app.Map("/{targetApp}/ws", WsHandler);
 // Catch-All route to pick up malformed URLs like ////targetApp/ws.
-app.Map("/{*catchall}", async (HttpContext context) =>
-{
-    // Attempt to access the original RawTarget (if available) to see the clients input.
-    string rawTarget = context.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpRequestFeature>()?.RawTarget
-                       ?? context.Request.Path.Value;
 
-    // Split by '/' and remove empty entries.
+
+
+// Use MapWhen to exclude /static requests from entering the catchall branch.
+// Branch out requests that do not start with "/static".
+// Now, register the fallback so that requests not handled by earlier endpoints are processed here.
+app.MapFallback(async context =>
+{
+    // Although static file requests should have been handled already, you can add an extra check.
+    if (context.Request.Path.StartsWithSegments("/static", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        await context.Response.WriteAsync("Static file not found");
+        return;
+    }
+
+    // Retrieve the original raw target.
+    var requestFeature = context.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpRequestFeature>();
+    string rawTarget = requestFeature?.RawTarget ?? context.Request.Path.Value ?? string.Empty;
+
+    // Split the raw target to inspect the segments.
     var segments = rawTarget.Split('/', StringSplitOptions.RemoveEmptyEntries);
 
-    // Expecting at least two segments: targetApp and "ws".
-    // This covers cases like "////targetApp/ws" (which becomes ["targetApp", "ws"] after removing empties).
+    // Check if the URL is for a WebSocket, e.g. "/targetApp/ws".
     if (segments.Length >= 2 && segments[1].Equals("ws", StringComparison.OrdinalIgnoreCase))
     {
-        // Rebuild a normalized path.
+        // Normalize path accordingly.
         string normalizedPath = $"/{segments[0]}/ws";
         context.Request.Path = normalizedPath;
-        // Set the route value for targetApp so wsHandler can access it.
         context.Request.RouteValues["targetApp"] = segments[0];
 
-        // Delegate to the common wsHandler.
+        // Delegate to your WebSocket handler.
         await WsHandler(context);
         return;
     }
 
-    // For any other catch-all that doesnt match our expected pattern, return a 404.
+    // Fallback response if nothing matches.
+    Console.WriteLine($"Fallback: Not Found {rawTarget}");
     context.Response.StatusCode = StatusCodes.Status404NotFound;
     await context.Response.WriteAsync("Not Found");
 });
