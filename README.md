@@ -33,6 +33,17 @@ export BASE_PATH="/"
 `sway`  
 `wayvnc`  
 
+##### Running multiple programs  
+Put your startup script in $PATH with commands (or modify $PATH) and set DEFAULT_PROGRAM_NAME to it; put the commands with & for runnin it in the background instead.
+e.g. `ctwm -f ctwm &` (in default_program)  
+```
+#!/bin/sh
+ctwm -f ctwm &
+xclock &
+xcalc &
+```  
+Don't forget to `chmod +x default_program`!    
+
 ### TLS/SSL
 Ideally usable from an Apache Web Server reverse HTTPS proxy.
 
