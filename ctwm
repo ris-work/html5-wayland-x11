@@ -3,9 +3,10 @@
 Menu "Root" {}
 BorderWidth 2
 TitleFont "-*-helvetica-bold-r-*-*-12-*-*-*-*-*-*-*"
-RightTitleButton "Fold" = f.delete
-RightTitleButton "Fold" = f.delete
 RightTitleButton "star" = f.resize
+RightTitleButton "Down" = f.iconify
+RightTitleButton "Fold" = f.delete
+RightTitleButton "Fold" = f.delete
 LeftTitleButton "boxes" = f.move
 NoTitleFocus
 NoDefaults
@@ -34,11 +35,11 @@ TitleBackground       "gray65"
 MapWindowBackground   "gray65"	
 MapWindowForeground   "Black"		
 }
-TitleButtonShadowDepth    1
+TitleButtonShadowDepth    2
 TitleShadowDepth          1
 TitleButtonBorderWidth    1
 TitlePadding              2		# frame around TBobjects?
-ButtonIndent              2		# indentated TBbuttons?		
+ButtonIndent              1		# indentated TBbuttons?		
 FramePadding		  2		# frame around TB?
 TitleJustification        "left"	# right/left/center
 Borderwidth               2
