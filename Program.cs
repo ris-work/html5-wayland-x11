@@ -319,7 +319,7 @@ app.MapGet("/", async (HttpContext context) => {
 });
 
 // WS forwarder endpoint: not directly seen by the user, only by vnc_lite.html.
-app.Map("/{targetApp}/ws", async (HttpContext context) => {
+var WsHandler =  async (HttpContext context) => {
     string targetApp = (string?)context.Request.RouteValues["targetApp"] ?? defaultApp;
     if (!approvedCommands.Contains(targetApp)) {
         Logger.Log($"Disallowed app in WS: '{targetApp}', defaulting to {defaultApp}");
@@ -376,6 +376,43 @@ app.Map("/{targetApp}/ws", async (HttpContext context) => {
         }
         Logger.Log($"WS closed for cookie={cookie} in app={targetApp}");
     }
+};
+app.Map("/{targetApp}/ws", WsHandler);
+// Now, register the fallback so that requests not handled by earlier endpoints are processed here.
+app.MapFallback(async context =>
+{
+    // Although static file requests should have been handled already, you can add an extra check.
+    if (context.Request.Path.StartsWithSegments("/static", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        await context.Response.WriteAsync("Static file not found");
+        return;
+    }
+
+    // Retrieve the original raw target.
+    var requestFeature = context.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpRequestFeature>();
+    string rawTarget = requestFeature?.RawTarget ?? context.Request.Path.Value ?? string.Empty;
+
+    // Split the raw target to inspect the segments.
+    var segments = rawTarget.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+    // Check if the URL is for a WebSocket, e.g. "/targetApp/ws".
+    if (segments.Length >= 2 && segments[1].Equals("ws", StringComparison.OrdinalIgnoreCase))
+    {
+        // Normalize path accordingly.
+        string normalizedPath = $"/{segments[0]}/ws";
+        context.Request.Path = normalizedPath;
+        context.Request.RouteValues["targetApp"] = segments[0];
+
+        // Delegate to your WebSocket handler.
+        await WsHandler(context);
+        return;
+    }
+
+    // Fallback response if nothing matches.
+    Console.WriteLine($"Fallback: Not Found {rawTarget}");
+    context.Response.StatusCode = StatusCodes.Status404NotFound;
+    await context.Response.WriteAsync("Not Found");
 });
 app.Run();
 
