@@ -9,6 +9,7 @@
       <PublishAotCompressed>true</PublishAotCompressed>
   <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   <OptimizationPreference>Size</OptimizationPreference>
+  <EnableRequestDelegateGenerator>true</EnableRequestDelegateGenerator>
   </PropertyGroup>
 
   <ItemGroup>
