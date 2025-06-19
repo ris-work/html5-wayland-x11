@@ -9,6 +9,7 @@
       <PublishAotCompressed>true</PublishAotCompressed>
   <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   <OptimizationPreference>Size</OptimizationPreference>
+  <EnableRequestDelegateGenerator>true</EnableRequestDelegateGenerator>
   </PropertyGroup>
 
   <ItemGroup>
@@ -24,6 +25,7 @@
   <!-- Optionally, if you want all content files to be embedded and later self-extracted, set: -->
   <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
   <EnableDefaultContentItems>false</EnableDefaultContentItems>
+  <EnableRequestDelegateGenerator>true</EnableRequestDelegateGenerator>
 </PropertyGroup>
 
 <ItemGroup>

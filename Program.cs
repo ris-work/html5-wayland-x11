@@ -378,7 +378,7 @@ app.MapGet("/", async (HttpContext context) => {
 });
 
 // WS forwarder endpoint: not directly seen by the user, only by vnc_lite.html.
-var WsHandler = async (HttpContext context) => {
+RequestDelegate WsHandler = async (HttpContext context) => {
     Console.WriteLine("Endpoint hit: targetApp/ws");
     string targetApp = (string?)context.Request.RouteValues["targetApp"] ?? defaultApp;
     if (!approvedCommands.Contains(targetApp)) {
