@@ -11,12 +11,12 @@ This is a program that is terse and can be used to automatically setup and teard
 In the `uds` branch, there is a config file for `ctwm` that disables all menus and gives typical Microsoft Windows (R)-like behaviour.   
 Environment variables:  
 ```
-export RESOLUTION_WIDTH=1024
-export RESOLUTION_HEIGHT=768
-export DEFAULT_PROGRAM_NAME=xeyes
-#export WEBSOCKIFY=websockify-rs (Apache/MIT like licensed over websockify's LGPL)
-#BASE_PATH for reverse subdirectory proxies
-export BASE_PATH="/"
+export RESOLUTION_WIDTH=1024 
+export RESOLUTION_HEIGHT=768 
+export DEFAULT_PROGRAM_NAME=xeyes 
+#export WEBSOCKIFY=websockify-rs (Apache/MIT like licensed over websockify's LGPL) 
+#BASE_PATH for reverse subdirectory proxies 
+export BASE_PATH="/" 
 ```
 
 ## Requiremets
@@ -35,6 +35,19 @@ export BASE_PATH="/"
 
 ### TLS/SSL
 Ideally usable from an Apache Web Server reverse HTTPS proxy.
+
+#### Apache2 config
+##### if `BASE_PATH="/demo_x11/"`
+```
+    RewriteEngine On 
+    RewriteCond %{HTTP:Upgrade} =websocket [NC] 
+    RewriteRule ^/demo_x11/(.*)$ ws://127.0.0.1:5506/$1 [P,L] 
+
+    # Proxy all other HTTP requests under /demo. 
+    ProxyPass /demo_x11 http://127.0.0.1:5506 
+    ProxyPassReverse /demo_x11 http://127.0.0.1:5506 
+
+```
 
 ### Things that have been tested 
  - `xeyes` (and others)  
