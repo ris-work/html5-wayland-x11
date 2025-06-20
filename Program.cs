@@ -74,8 +74,31 @@ if (BASE_PATH != "/")
     }
 }
 app.UsePathBase(BASE_PATH);
+// Windows 2000–style Sway config as one C# string: right-click on the titlebar (border) only
+string _2kSwayConfig = 
+    "set $bg      #C0C0C0\n" +
+    "set $focus   #000080\n" +
+    "set $normal  #808080\n" +
+    //"bar hidden\n" +
+    "for_window [app_id=\".*\"] floating enable\n" +
+    "for_window [app_id=\".*\"] border pixel 2\n" +
+    "for_window [app_id=\".*\"] move position center\n" +
+    "for_window [class=\".*\"] floating enable\n" +
+    "for_window [class=\".*\"] border pixel 2\n" +
+    "for_window [class=\".*\"] move position center\n" +
+    "focus_follows_mouse no\n" +
+    "client.focused   $focus $focus #C0C0C0 $focus\n" +
+    "client.unfocused $normal $normal #C0C0C0 $normal\n" +
+    //"unbind_all\n" +
+    "bindsym Alt+F4 kill\n" +
+    "bindsym button3 kill\n" // right-click on the border (titlebar) to close
+    + "floating_modifier ctrl\n"
+    + "bindsym button1 move\n"
+    + "bindsym button2 [floating_modifier] scratchpad show\n";
+
+
 File.WriteAllText("empty_x_startup", "#!/bin/sh\nexec tail -f /dev/null");
-File.WriteAllText("empty_sway_startup", $"output * resolution {W}x{H} bg #008080 solid_color");
+File.WriteAllText("empty_sway_startup", $"output * resolution {W}x{H} bg #008080 solid_color\n{_2kSwayConfig}");
 File.SetUnixFileMode("empty_x_startup", File.GetUnixFileMode("empty_x_startup") | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
 
 static void ExtractAllStaticResources(string destFolder)
