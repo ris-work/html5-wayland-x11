@@ -21,6 +21,8 @@ using System.Text; // Needed for Encoding.ASCII in the handshake
 // ----------------------------------------------------------------
 
 const int KILL_WAIT = 45;
+const string WEBRTC_PROCESS_NAME = "echo";
+const int ATTEMPT_TIMES = 5;
 string defaultApp = "xclock"; // why: default safe app
 string[] approvedCommands = new string[] { "xeyes", "xclock", "scalc", "vkcube", "glxgears", "xgc", "oclock", "ico", "xcalc", "abuse", "a7xpg", "gunroar", "rrootage", "noiz2sa" }; // why: restrict allowed commands
 List<ActiveSessions> sessions = new();
@@ -226,6 +228,85 @@ bool WaitForUnixSocketOpen(string socketPath, int timeoutMs = 5000)
     }
     return false;
 }
+Action<ActiveSessions> cleanup = (ActiveSessions A) => {};
+var GenerateConfig = (int s) => { return s.ToString(); };
+async Task SpawnWebRTCChildProcess(ActiveSessions s,
+                                   string config,
+                                   Action<ActiveSessions> cleanup)
+{
+    for (int i = 0; i < ATTEMPT_TIMES; i++)
+    {
+        s.AttemptCount++;
+        Logger.Log($"[WebRTC {i+1}/{ATTEMPT_TIMES}] launch cookie={s.Cookie}");
+        var p = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName               = WEBRTC_PROCESS_NAME,
+                Arguments              = config,
+                RedirectStandardOutput = true,
+                RedirectStandardError  = true,
+                UseShellExecute        = false,
+                CreateNoWindow         = true
+            },
+            EnableRaisingEvents = true
+        };
+        s.AppProcess = p;
+        var tcs = new TaskCompletionSource<bool>();
+        p.Exited += (_,__) =>
+        {
+            s.LastActive = DateTime.UtcNow;
+            Logger.Log($"WebRTC fwd exited code={p.ExitCode}");
+            tcs.TrySetResult(true);
+        };
+        p.Start();
+        await tcs.Task;
+    }
+    cleanup(s);
+}
+
+
+//var cleanup = (_) => {};
+ActiveSessions StartWebRTCSession(string cookie,
+                                  string procName,
+                                  Action<ActiveSessions> cleanup)
+{
+    int vncPort = GetFreePort();
+    int display = new Random().Next(1,100);
+    var vnc = Process.Start(new ProcessStartInfo(
+        "setsid",
+        $"{vncserver} :{display} -rfbunixpath unix-{vncPort} -SecurityTypes None -geometry {W}x{H}"
+    ){ UseShellExecute = false })!;
+    if (!WaitForUnixSocketOpen($"unix-{vncPort}"))
+        Logger.Log($"Warning: vnc @ unix-{vncPort} did not open");
+
+    var appProc = Process.Start(new ProcessStartInfo(procName)
+    {
+        UseShellExecute = false,
+        Environment = { ["DISPLAY"] = $":{display}" }
+    })!;
+
+    var config = GenerateConfig(vncPort);
+    Logger.Log($"Session started WebRTC: cookie={cookie}, display={display}, vnc(pid={vnc.Id}), app(pid={appProc.Id}), config={config}");
+
+    var s = new ActiveSessions
+    {
+        Cookie            = cookie,
+        LastActive        = DateTime.UtcNow,
+        VncProcess        = vnc,
+        WebsockifyProcess = null,
+        AppProcess        = appProc,
+        VncPort           = vncPort,
+        WebsockifyPort    = 0,
+        IsWebRTCSession   = true,
+        WebRTCConfig      = config,
+        AttemptCount      = 0
+    };
+
+    _ = SpawnWebRTCChildProcess(s, config, cleanup);
+    return s;
+}
+
 
 ActiveSessions StartSession(string cookie, string procName) {
     int vncPort = GetFreePort(), wsPort = GetFreePort(), display = new Random().Next(1, 100);
@@ -296,6 +377,10 @@ _ = Task.Run(async () => {
 // GET "/" route: redirect user only to vnc_lite.html (WS endpoint is passed as querystring without leading slash)
 app.MapGet("/", async (HttpContext context) => {
     string targetApp = context.Request.Query["app"];
+    string QIsWebRTCSession = context.Request.Query["WebRTC"];
+    if (string.IsNullOrEmpty(QIsWebRTCSession))
+    	QIsWebRTCSession="false";
+    bool IsWebRTCSession = QIsWebRTCSession.ToLowerInvariant() == "true";
     if (string.IsNullOrEmpty(targetApp))
         targetApp = defaultApp;
     if (!approvedCommands.Contains(targetApp)) { // why: restrict allowed commands
@@ -307,9 +392,14 @@ app.MapGet("/", async (HttpContext context) => {
     context.Response.Cookies.Append(sessionCookieName, cookie);
     ActiveSessions session;
     if (!sessions.Any(s => s.Cookie == cookie)) {
-        session = StartSession(cookie, targetApp);
-        sessions.Add(session);
-        Logger.Log($"New session for cookie={cookie} app={targetApp}");
+        if(!IsWebRTCSession){
+            session = StartSession(cookie, targetApp);
+            sessions.Add(session);
+            Logger.Log($"New session for cookie={cookie} app={targetApp}");
+        }
+        else {
+	    Logger.Log("WebRTC Session Requested");
+        }
     } else {
         session = sessions.First(s => s.Cookie == cookie);
         Logger.Log($"Existing session for cookie={cookie} app={targetApp}");
@@ -428,6 +518,11 @@ struct ActiveSessions {
     public Process AppProcess;
     public int VncPort;
     public int WebsockifyPort;
+    public bool   IsWebRTCSession;        // true=WebRTC, false=WebSocket
+    public DateTime WebRTCFirstSpawnTime;
+    public int AttemptCount;
+    public string WebRTCConfig;
+
 }
 
 static class Logger {
