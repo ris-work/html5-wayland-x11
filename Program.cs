@@ -25,12 +25,12 @@ using System.Data;
 // ----------------------------------------------------------------
 
 const int KILL_WAIT = 45;
-const string WEBRTC_PROCESS_NAME = "echo";
+const string WEBRTC_PROCESS_NAME = "/usr/bin/errecho";
 const int ATTEMPT_TIMES = 5;
 string defaultApp = "xclock"; // why: default safe app
 string[] approvedCommands = new string[] { "xeyes", "xclock", "scalc", "vkcube", "glxgears", "xgc", "oclock", "ico", "xcalc", "abuse", "a7xpg", "gunroar", "rrootage", "noiz2sa" }; // why: restrict allowed commands
 List<ActiveSessions> sessions = new();
-Logger.Debug = false; // why: enable logging
+Logger.Debug = true; // why: enable logging
 
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
@@ -248,9 +248,9 @@ async Task SpawnWebRTCChildProcess(ActiveSessions s,
             {
                 FileName               = WEBRTC_PROCESS_NAME,
                 Arguments              = config,
-                RedirectStandardOutput = true,
-                RedirectStandardError  = true,
-                UseShellExecute        = false,
+                RedirectStandardOutput = false,
+                RedirectStandardError  = false,
+                UseShellExecute        = true,
                 CreateNoWindow         = true
             },
             EnableRaisingEvents = true
@@ -412,24 +412,49 @@ _ = Task.Run(async () => {
     while (true) {
         await Task.Delay(5000);
         sessions.RemoveAll(s => {
-            if ((DateTime.UtcNow - s.LastActive).TotalSeconds > KILL_WAIT) {
-                Logger.Log($"Session idle: cookie={s.Cookie} idle for {(DateTime.UtcNow - s.LastActive).TotalSeconds}s; killing processes");
-		try { Console.Error.WriteLine($"Killing {s.VncProcess.Id}"); Process.Start(new ProcessStartInfo("kill", $"-KILL -- -{s.VncProcess.Id}"){UseShellExecute = false}); } catch (Exception E) {Console.Error.WriteLine(E);}
-		try { Process.Start(new ProcessStartInfo("kill", $"{s.VncProcess.Id}"){UseShellExecute=false}); } catch (Exception E) {Console.Error.WriteLine(E);}
-                try { if (!s.WebsockifyProcess.HasExited) s.WebsockifyProcess.Kill(); } catch { }
-                try { if (!s.VncProcess.HasExited) s.VncProcess.Kill(); } catch { }
-                try { if (!s.AppProcess.HasExited) s.AppProcess.Kill(); } catch { }
-                return true;
+            if (s.IsWebRTCSession) {
+                if (s.AttemptCount >= ATTEMPT_TIMES) {
+                    Logger.Log($"WebRTC done: cookie={s.Cookie} attempts={s.AttemptCount}; killing");
+                    try { if (!s.AppProcess.HasExited)     s.AppProcess.Kill();     } catch {}
+                    try { if (!s.WebsockifyProcess.HasExited) s.WebsockifyProcess.Kill(); } catch {}
+                    try { if (!s.VncProcess.HasExited)     s.VncProcess.Kill();     } catch {}
+                    return true;
+                }
+            }
+            else {
+                var idleSec = (DateTime.UtcNow - s.LastActive).TotalSeconds;
+                if (idleSec > KILL_WAIT) {
+                    Logger.Log($"WS idle: cookie={s.Cookie} idle for {idleSec}s; killing");
+                    try { if (!s.AppProcess.HasExited)     s.AppProcess.Kill();     } catch {}
+                    try { if (!s.WebsockifyProcess.HasExited) s.WebsockifyProcess.Kill(); } catch {}
+                    try { if (!s.VncProcess.HasExited)     s.VncProcess.Kill();     } catch {}
+                    return true;
+                }
             }
             return false;
         });
     }
 });
 
+
+app.MapGet("/WebRTCInfo", (string session) =>
+{
+    var idx = sessions.FindIndex(x => x.Cookie == session && x.IsWebRTCSession);
+    if (idx < 0){
+        Logger.Log($"WebRTCInfo: NOT FOUND: {session}");
+        return Results.NotFound();
+    }
+    Logger.Log($"WebRTCInfo: FOUND: {session}");
+    var s = sessions[idx];
+    return Results.Text(s.WebRTCConfig, "application/json");
+});
+
+
 // GET "/" route: redirect user only to vnc_lite.html (WS endpoint is passed as querystring without leading slash)
 app.MapGet("/", async (HttpContext context) => {
     string targetApp = context.Request.Query["app"];
     string QIsWebRTCSession = context.Request.Query["WebRTC"];
+    Logger.Log($"QIsWebRTCSession: {QIsWebRTCSession}");
     if (string.IsNullOrEmpty(QIsWebRTCSession))
     	QIsWebRTCSession="false";
     bool IsWebRTCSession = QIsWebRTCSession.ToLowerInvariant() == "true";
@@ -450,14 +475,22 @@ app.MapGet("/", async (HttpContext context) => {
             Logger.Log($"New session for cookie={cookie} app={targetApp}");
         }
         else {
+	    session = StartWebRTCSession(cookie, targetApp, cleanup);
 	    Logger.Log("WebRTC Session Requested");
+            sessions.Add(session);
         }
     } else {
         session = sessions.First(s => s.Cookie == cookie);
         Logger.Log($"Existing session for cookie={cookie} app={targetApp}");
     }
     await Task.Delay(1500);
+    if(!session.IsWebRTCSession){
     context.Response.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
+    }
+    else
+    {
+    context.Response.Redirect($"{BASE_PATH}WebRTCInfo/?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
+    }
 });
 
 // WS forwarder endpoint: not directly seen by the user, only by vnc_lite.html.
