@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
+using System.Text.Json;
 using Microsoft.Extensions.FileProviders;
 using System.Text; // Needed for Encoding.ASCII in the handshake
 using Tomlyn;
@@ -447,7 +448,7 @@ app.MapGet("/WebRTCInfo", (string session) =>
     }
     Logger.Log($"WebRTCInfo: FOUND: {session}");
     var s = sessions[idx];
-    return Results.Text(s.WebRTCConfigTheirs, "application/json");
+    return Results.Text(s.WebRTCConfigTheirs, "text/plain");
 });
 
 
