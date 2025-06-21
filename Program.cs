@@ -15,6 +15,10 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
 using System.Text; // Needed for Encoding.ASCII in the handshake
+using Tomlyn;
+using Tomlyn.Model;
+using System.Security.Cryptography;
+using System.Data;
 
 // ----------------------------------------------------------------
 // Top-level statements (all types come after)
@@ -286,8 +290,55 @@ ActiveSessions StartWebRTCSession(string cookie,
         Environment = { ["DISPLAY"] = $":{display}" }
     })!;
 
-    var config = GenerateConfig(vncPort);
-    Logger.Log($"Session started WebRTC: cookie={cookie}, display={display}, vnc(pid={vnc.Id}), app(pid={appProc.Id}), config={config}");
+    byte[] peerPSK = new byte[40];
+    byte[] randomUsernameBytes = new byte[20];
+    byte[] randomPasswordBytes = new byte[20];
+    byte[] randomSessionNameBytes = new byte[40];
+    var RNG = RandomNumberGenerator.Create();
+    RNG.GetBytes(peerPSK);
+    RNG.GetBytes(randomUsernameBytes);
+    RNG.GetBytes(randomPasswordBytes);
+    RNG.GetBytes(randomSessionNameBytes);
+    var configOurs = GenerateConfig(vncPort);
+
+    string randomPeerPSK = Wiry.Base32.Base32Encoding.Standard.GetString(peerPSK);
+    string randomUsername = Wiry.Base32.Base32Encoding.Standard.GetString(randomUsernameBytes);
+    string randomPassword = Wiry.Base32.Base32Encoding.Standard.GetString(randomPasswordBytes);
+    string randomSessionName = Wiry.Base32.Base32Encoding.Standard.GetString(randomSessionNameBytes);
+
+
+    
+
+    /* Generate WebRTC Forwarder TOML configuration */
+    var OffererToml = Toml.FromModel((new ForwarderConfigOut()
+    {
+        Address = $"unix-{vncPort}",
+        PublishAuthUser = randomUsername,
+        PublishAuthPass = randomPassword,
+        PeerPSK = randomPeerPSK,
+        PublishEndpoint = $"wss://vz.al/anonwsmul/{randomSessionName}/wso",
+        Port = $"unix-{vncPort}",
+        PublishAuthType = "Basic",
+        Type = "UDP",
+        WebRTCMode = "Offer",
+    }).ToTomlTable());
+    var AnswererToml = Toml.FromModel((new ForwarderConfigOut()
+    {
+        Address = $"unix-{vncPort}",
+        PublishAuthUser = randomUsername,
+        PublishAuthPass = randomPassword,
+        PeerPSK = randomPeerPSK,
+        PublishEndpoint = $"wss://vz.al/anonwsmul/{randomSessionName}/wsa",
+        Port = $"unix-{vncPort}",
+        PublishAuthType = "Basic",
+        Type = "UDP",
+        WebRTCMode = "Accept",
+    }).ToTomlTable());
+    var ourForwarderToml = AnswererToml;
+    var theirForwarderToml = OffererToml;
+    configOurs = AnswererToml;
+    string configTheirs = OffererToml;
+    Logger.Log($"Session started WebRTC: cookie={cookie}, display={display}, vnc(pid={vnc.Id}), app(pid={appProc.Id}), config={configOurs}, configTheirs={configTheirs}");
 
     var s = new ActiveSessions
     {
@@ -299,11 +350,12 @@ ActiveSessions StartWebRTCSession(string cookie,
         VncPort           = vncPort,
         WebsockifyPort    = 0,
         IsWebRTCSession   = true,
-        WebRTCConfig      = config,
+        WebRTCConfigOurs      = configOurs,
+        WebRTCConfigTheirs = configTheirs,
         AttemptCount      = 0
     };
 
-    _ = SpawnWebRTCChildProcess(s, config, cleanup);
+    _ = SpawnWebRTCChildProcess(s, configOurs, cleanup);
     return s;
 }
 
@@ -521,7 +573,8 @@ struct ActiveSessions {
     public bool   IsWebRTCSession;        // true=WebRTC, false=WebSocket
     public DateTime WebRTCFirstSpawnTime;
     public int AttemptCount;
-    public string WebRTCConfig;
+    public string WebRTCConfigOurs;
+    public string WebRTCConfigTheirs;
 
 }
 
@@ -592,5 +645,60 @@ public static class UnixWS
                                                      keepAliveInterval: TimeSpan.FromMinutes(2));
         Logger.Log("WebSocket instance created from stream.");
         return webSocket;
+    }
+}
+
+public class ForwarderConfigOut
+{
+    public string Type = "";
+    public string WebRTCMode = "";
+    public string Address = "127.0.0.1";
+    public string Port = "";
+    public TomlArray ICEServers = new TomlArray() {
+            new TomlTable()
+            {
+                ["URLs"] = new TomlArray()
+                {
+                    "stun:vz.al"
+                }
+            },
+            new TomlTable()
+            {
+                ["URLs"] = new TomlArray()
+                {
+                    "stun:stun.l.google.com:19302"
+                }
+            }
+        };
+    public string PublishType = "ws";
+    public string PublishEndpoint = "";
+    public string PublishAuthType = "";
+    public string PublishAuthUser = "";
+    public string PublishAuthPass = "";
+    public string PeerAuthType = "PSK";
+    public string PeerPSK = "";
+    public bool Publish = true;
+    public long TimeoutCountMax = 15;
+
+    public TomlTable ToTomlTable()
+    {
+        return new TomlTable()
+        {
+            ["Type"] = Type,
+            ["WebRTCMode"] = WebRTCMode,
+            ["Address"] = Address,
+            ["Port"] = Port,
+            ["Publish"] = Publish,
+            ["PublishType"] = PublishType,
+            ["PublishEndpoint"] = PublishEndpoint,
+            ["PublishAuthType"] = PublishAuthType,
+            ["PublishAuthUser"] = PublishAuthUser,
+            ["PublishAuthPass"] = PublishAuthPass,
+            ["PeerAuthType"] = PeerAuthType,
+            ["PeerPSK"] = PeerPSK,
+            ["ICEServers"] = ICEServers,
+            ["TimeoutCountMax"] = TimeoutCountMax
+
+        };
     }
 }
