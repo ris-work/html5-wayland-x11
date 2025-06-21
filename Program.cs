@@ -25,7 +25,7 @@ using System.Data;
 // ----------------------------------------------------------------
 
 const int KILL_WAIT = 45;
-const string WEBRTC_PROCESS_NAME = "/usr/bin/errecho";
+const string WEBRTC_PROCESS_NAME = "cat";
 const int ATTEMPT_TIMES = 5;
 string defaultApp = "xclock"; // why: default safe app
 string[] approvedCommands = new string[] { "xeyes", "xclock", "scalc", "vkcube", "glxgears", "xgc", "oclock", "ico", "xcalc", "abuse", "a7xpg", "gunroar", "rrootage", "noiz2sa" }; // why: restrict allowed commands
@@ -319,7 +319,7 @@ ActiveSessions StartWebRTCSession(string cookie,
         PublishEndpoint = $"wss://vz.al/anonwsmul/{randomSessionName}/wso",
         Port = $"unix-{vncPort}",
         PublishAuthType = "Basic",
-        Type = "UDP",
+        Type = "UDS",
         WebRTCMode = "Offer",
     }).ToTomlTable());
     var AnswererToml = Toml.FromModel((new ForwarderConfigOut()
@@ -331,7 +331,7 @@ ActiveSessions StartWebRTCSession(string cookie,
         PublishEndpoint = $"wss://vz.al/anonwsmul/{randomSessionName}/wsa",
         Port = $"unix-{vncPort}",
         PublishAuthType = "Basic",
-        Type = "UDP",
+        Type = "UDS",
         WebRTCMode = "Accept",
     }).ToTomlTable());
     var ourForwarderToml = AnswererToml;
@@ -354,8 +354,9 @@ ActiveSessions StartWebRTCSession(string cookie,
         WebRTCConfigTheirs = configTheirs,
         AttemptCount      = 0
     };
+    File.WriteAllText($"webrtc-config-{vncPort}.toml", configOurs);
 
-    _ = SpawnWebRTCChildProcess(s, configOurs, cleanup);
+    _ = SpawnWebRTCChildProcess(s, $"webrtc-config-{vncPort}.toml", cleanup);
     return s;
 }
 
@@ -446,7 +447,7 @@ app.MapGet("/WebRTCInfo", (string session) =>
     }
     Logger.Log($"WebRTCInfo: FOUND: {session}");
     var s = sessions[idx];
-    return Results.Text(s.WebRTCConfig, "application/json");
+    return Results.Text(s.WebRTCConfigTheirs, "application/json");
 });
 
 
