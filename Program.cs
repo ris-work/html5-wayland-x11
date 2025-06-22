@@ -26,8 +26,8 @@ using System.Data;
 // ----------------------------------------------------------------
 
 const int KILL_WAIT = 45;
-const string WEBRTC_PROCESS_NAME = "cat";
-const int ATTEMPT_TIMES = 5;
+const string WEBRTC_PROCESS_NAME = "t-a-c";
+const int ATTEMPT_TIMES = 500;
 string defaultApp = "xclock"; // why: default safe app
 string[] approvedCommands = new string[] { "xeyes", "xclock", "scalc", "vkcube", "glxgears", "xgc", "oclock", "ico", "xcalc", "abuse", "a7xpg", "gunroar", "rrootage", "noiz2sa" }; // why: restrict allowed commands
 List<ActiveSessions> sessions = new();
@@ -242,7 +242,7 @@ async Task SpawnWebRTCChildProcess(ActiveSessions s,
     for (int i = 0; i < ATTEMPT_TIMES; i++)
     {
         s.AttemptCount++;
-        Logger.Log($"[WebRTC {i+1}/{ATTEMPT_TIMES}] launch cookie={s.Cookie}");
+        Logger.Log($"[WebRTC {i+1}/{ATTEMPT_TIMES}] launch cookie={s.Cookie} config={config}");
         var p = new Process
         {
             StartInfo = new ProcessStartInfo
@@ -281,7 +281,11 @@ ActiveSessions StartWebRTCSession(string cookie,
     var vnc = Process.Start(new ProcessStartInfo(
         "setsid",
         $"{vncserver} :{display} -rfbunixpath unix-{vncPort} -SecurityTypes None -geometry {W}x{H}"
-    ){ UseShellExecute = false })!;
+    ){ UseShellExecute = true })!;
+    var vncDummy = Process.Start(new ProcessStartInfo(
+        "setsid",
+        $"udsecho unix-{vncPort} "
+    ){ UseShellExecute = true })!;
     if (!WaitForUnixSocketOpen($"unix-{vncPort}"))
         Logger.Log($"Warning: vnc @ unix-{vncPort} did not open");
 
@@ -339,13 +343,13 @@ ActiveSessions StartWebRTCSession(string cookie,
     var theirForwarderToml = OffererToml;
     configOurs = AnswererToml;
     string configTheirs = OffererToml;
-    Logger.Log($"Session started WebRTC: cookie={cookie}, display={display}, vnc(pid={vnc.Id}), app(pid={appProc.Id}), config={configOurs}, configTheirs={configTheirs}");
+    Logger.Log($"Session started WebRTC: cookie={cookie}, display={display}, vnc(pid={vncDummy.Id}), app(pid={appProc.Id}), config={configOurs}, configTheirs={configTheirs}");
 
     var s = new ActiveSessions
     {
         Cookie            = cookie,
         LastActive        = DateTime.UtcNow,
-        VncProcess        = vnc,
+        VncProcess        = vncDummy,
         WebsockifyProcess = null,
         AppProcess        = appProc,
         VncPort           = vncPort,
