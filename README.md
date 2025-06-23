@@ -14,6 +14,9 @@ Environment variables:
 export RESOLUTION_WIDTH=1024 
 export RESOLUTION_HEIGHT=768 
 export DEFAULT_PROGRAM_NAME=xeyes 
+export ANSWERER_TURN_SERVER=turn:xxxx
+export ANSWERER_TURN_USERNAME=xxxx
+export ANSWERER_TURN_CREDENTIAL=xxxx
 #export WEBSOCKIFY=websockify-rs (Apache/MIT like licensed over websockify's LGPL) 
 #BASE_PATH for reverse subdirectory proxies 
 export BASE_PATH="/" 
