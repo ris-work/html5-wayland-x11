@@ -1,0 +1,9 @@
+root = true
+
+[*.cs]
+indent_style = space
+indent_size  = 4
+
+# dont force any new-line or wrapping rules:
+csharp_preserve_single_line_statements = true
+csharp_preserve_single_line_blocks     = true
