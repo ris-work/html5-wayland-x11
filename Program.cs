@@ -406,7 +406,7 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     await Task.Delay(1000);
     var wayVncLauncherCommand = "swaymsg";
     var USock = $"{Path.Combine(Directory.GetCurrentDirectory(), "unix-")}{vncPort}";
-    var wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"while :; rm {USock}; do wayvnc -v -C /dev/null --unix-socket {USock} >{RTSock}.log; echo Restarting: wayvnc {RTSock}@{USock}; rm {USock}; [ -S \\\"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\\\" ] && echo Sway still alive || break; done\\\"\"";
+    var wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"while :; rm -f {USock}; do wayvnc -v -C /dev/null --unix-socket {USock} >{RTSock}.log; echo Restarting: wayvnc {RTSock}@{USock}; rm {USock}; [ -S \\\"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\\\" ] && echo Sway still alive || break; done\\\"\"";
     //wayVncLauncher.Environment["WLR_BACKENDS"] = "headless";
     //wayVncLauncher.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
     Console.WriteLine($"wayvnc: {wayVncLauncherCommand} {wayVncLauncherArgs}");
