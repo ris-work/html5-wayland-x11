@@ -15,12 +15,18 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
 using System.Text; // Needed for Encoding.ASCII in the handshake
+using Tomlyn;
+using Tomlyn.Model;
+using System.Security.Cryptography;
+using System.Data;
 
 // ----------------------------------------------------------------
 // Top-level statements (all types come after)
 // ----------------------------------------------------------------
 
 const int KILL_WAIT = 150;
+const string WEBRTC_PROCESS_NAME = "t-a-c";
+const int ATTEMPT_TIMES = 500;
 string defaultApp = "xclock"; // why: default safe app
 string[] approvedCommands = new string[] { "xeyes", "xclock", "scalc", "vkcube", "glxgears", "xgc", "oclock", "ico", "xcalc" }; // why: restrict allowed commands
 List<ActiveSessions> sessions = new();
@@ -148,8 +154,6 @@ var tempDir = Path.Combine(sharedFolder, Environment.UserName, Guid.NewGuid().To
 ExtractAllStaticResources(tempDir);
 Console.WriteLine($"Static resources extracted to: {tempDir}");
 
-Console.WriteLine($"Static resources extracted to: {tempDir}");
-
 app.Use(async (context, next) =>
 {
     Logger.Log($"HTTP {context.Request.Method} {context.Request.Path}{context.Request.QueryString}");
@@ -265,6 +269,137 @@ bool WaitForUnixSocketOpen(string socketPath, int timeoutMs = 5000)
     }
     return false;
 }
+Action<ActiveSessions> cleanup = (ActiveSessions A) => {};
+var GenerateConfig = (int s) => { return s.ToString(); };
+async Task SpawnWebRTCChildProcess(ActiveSessions s,
+                                   string config,
+                                   Action<ActiveSessions> cleanup)
+{
+    for (int i = 0; i < ATTEMPT_TIMES; i++)
+    {
+        s.AttemptCount++;
+        Logger.Log($"[WebRTC {i+1}/{ATTEMPT_TIMES}] launch cookie={s.Cookie} config={config}");
+        var p = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName               = WEBRTC_PROCESS_NAME,
+                Arguments              = config,
+                RedirectStandardOutput = false,
+                RedirectStandardError  = false,
+                UseShellExecute        = true,
+                CreateNoWindow         = true
+            },
+            EnableRaisingEvents = true
+        };
+        s.AppProcess = p;
+        var tcs = new TaskCompletionSource<bool>();
+        p.Exited += (_,__) =>
+        {
+            s.LastActive = DateTime.UtcNow;
+            Logger.Log($"WebRTC fwd exited code={p.ExitCode}");
+            tcs.TrySetResult(true);
+        };
+        p.Start();
+        await tcs.Task;
+    }
+    cleanup(s);
+}
+
+ActiveSessions StartWebRTCSession(string cookie,
+                                  string procName,
+                                  Action<ActiveSessions> cleanup)
+{
+    int vncPort = GetFreePort();
+    int display = new Random().Next(1,100);
+    var vnc = Process.Start(new ProcessStartInfo(
+        "setsid",
+        $"{vncserver} :{display} -rfbunixpath unix-{vncPort} -SecurityTypes None -geometry {W}x{H}"
+    ){ UseShellExecute = true })!;
+    var vncDummy = Process.Start(new ProcessStartInfo(
+        "setsid",
+        $"udsecho unix-{vncPort} "
+    ){ UseShellExecute = true })!;
+    if (!WaitForUnixSocketOpen($"unix-{vncPort}"))
+        Logger.Log($"Warning: vnc @ unix-{vncPort} did not open");
+
+    var appProc = Process.Start(new ProcessStartInfo(procName)
+    {
+        UseShellExecute = false,
+        Environment = { ["DISPLAY"] = $":{display}" }
+    })!;
+
+    byte[] peerPSK = new byte[40];
+    byte[] randomUsernameBytes = new byte[20];
+    byte[] randomPasswordBytes = new byte[20];
+    byte[] randomSessionNameBytes = new byte[40];
+    var RNG = RandomNumberGenerator.Create();
+    RNG.GetBytes(peerPSK);
+    RNG.GetBytes(randomUsernameBytes);
+    RNG.GetBytes(randomPasswordBytes);
+    RNG.GetBytes(randomSessionNameBytes);
+    var configOurs = GenerateConfig(vncPort);
+
+    string randomPeerPSK = Wiry.Base32.Base32Encoding.Standard.GetString(peerPSK);
+    string randomUsername = Wiry.Base32.Base32Encoding.Standard.GetString(randomUsernameBytes);
+    string randomPassword = Wiry.Base32.Base32Encoding.Standard.GetString(randomPasswordBytes);
+    string randomSessionName = Wiry.Base32.Base32Encoding.Standard.GetString(randomSessionNameBytes);
+
+
+    
+
+    /* Generate WebRTC Forwarder TOML configuration */
+    var OffererToml = Toml.FromModel((new ForwarderConfigOut()
+    {
+        Address = $"unix-{vncPort}",
+        PublishAuthUser = randomUsername,
+        PublishAuthPass = randomPassword,
+        PeerPSK = randomPeerPSK,
+        PublishEndpoint = $"wss://vz.al/anonwsmul/{randomSessionName}/wso",
+        Port = $"unix-{vncPort}",
+        PublishAuthType = "Basic",
+        Type = "UDS",
+        WebRTCMode = "Offer",
+    }).ToTomlTable());
+    var AnswererToml = Toml.FromModel((new ForwarderConfigOut()
+    {
+        Address = $"unix-{vncPort}",
+        PublishAuthUser = randomUsername,
+        PublishAuthPass = randomPassword,
+        PeerPSK = randomPeerPSK,
+        PublishEndpoint = $"wss://vz.al/anonwsmul/{randomSessionName}/wsa",
+        Port = $"unix-{vncPort}",
+        PublishAuthType = "Basic",
+        Type = "UDS",
+        WebRTCMode = "Accept",
+    }).ToTomlTable());
+    var ourForwarderToml = AnswererToml;
+    var theirForwarderToml = OffererToml;
+    configOurs = AnswererToml;
+    string configTheirs = OffererToml;
+    Logger.Log($"Session started WebRTC: cookie={cookie}, display={display}, vnc(pid={vncDummy.Id}), app(pid={appProc.Id}), config={configOurs}, configTheirs={configTheirs}");
+
+    var s = new ActiveSessions
+    {
+        Cookie            = cookie,
+        LastActive        = DateTime.UtcNow,
+        VncProcess        = vncDummy,
+        WebsockifyProcess = null,
+        AppProcess        = appProc,
+        VncPort           = vncPort,
+        WebsockifyPort    = 0,
+        IsWebRTCSession   = true,
+        WebRTCConfigOurs      = configOurs,
+        WebRTCConfigTheirs = configTheirs,
+        AttemptCount      = 0
+    };
+    File.WriteAllText($"webrtc-config-{vncPort}.toml", configOurs);
+
+    _ = SpawnWebRTCChildProcess(s, $"webrtc-config-{vncPort}.toml", cleanup);
+    return s;
+}
+
+
 
 async Task<ActiveSessions> StartSession(string cookie, string procName) {
     int vncPort = GetFreePort(), wsPort = GetFreePort(), display = new Random().Next(1, 100);
@@ -352,6 +487,16 @@ _ = Task.Run(async () => {
     while (true) {
         await Task.Delay(5000);
         sessions.RemoveAll(s => {
+            if (s.IsWebRTCSession) {
+                if (s.AttemptCount >= ATTEMPT_TIMES) {
+                    Logger.Log($"WebRTC done: cookie={s.Cookie} attempts={s.AttemptCount}; killing");
+                    try { if (!s.AppProcess.HasExited)     s.AppProcess.Kill();     } catch {}
+                    try { if (!s.WebsockifyProcess.HasExited) s.WebsockifyProcess.Kill(); } catch {}
+                    try { if (!s.VncProcess.HasExited)     s.VncProcess.Kill();     } catch {}
+                    return true;
+                }
+            }
+	    else{
             if ((DateTime.UtcNow - s.LastActive).TotalSeconds > KILL_WAIT) {
                 Logger.Log($"Session idle: cookie={s.Cookie} idle for {(DateTime.UtcNow - s.LastActive).TotalSeconds}s; killing processes");
     		string RTDir = $"{Path.Combine(Directory.GetCurrentDirectory(),"wl-")}{s.Display}";
@@ -368,16 +513,34 @@ _ = Task.Run(async () => {
                 try { if (!s.AppProcess.HasExited) s.AppProcess.Kill(); } catch { }
                 return true;
             }
+	    }
             return false;
         });
     }
 });
 
+
+app.MapGet("/WebRTCInfo", (string session) =>
+{
+    var idx = sessions.FindIndex(x => x.Cookie == session && x.IsWebRTCSession);
+    if (idx < 0){
+        Logger.Log($"WebRTCInfo: NOT FOUND: {session}");
+        return Results.NotFound();
+    }
+    Logger.Log($"WebRTCInfo: FOUND: {session}");
+    var s = sessions[idx];
+    return Results.Text(s.WebRTCConfigTheirs, "text/plain");
+});
 app.UseWebSockets();
 
 // GET "/" route: redirect user only to vnc_lite.html (WS endpoint is passed as querystring without leading slash)
 app.MapGet("/", async (HttpContext context) => {
     string targetApp = context.Request.Query["app"];
+    string QIsWebRTCSession = context.Request.Query["WebRTC"];
+    Logger.Log($"QIsWebRTCSession: {QIsWebRTCSession}");
+    if (string.IsNullOrEmpty(QIsWebRTCSession))
+    	QIsWebRTCSession="false";
+    bool IsWebRTCSession = QIsWebRTCSession.ToLowerInvariant() == "true";
     if (string.IsNullOrEmpty(targetApp))
         targetApp = defaultApp;
     if (!approvedCommands.Contains(targetApp)) { // why: restrict allowed commands
@@ -389,15 +552,29 @@ app.MapGet("/", async (HttpContext context) => {
     context.Response.Cookies.Append(sessionCookieName, cookie);
     ActiveSessions session;
     if (!sessions.Any(s => s.Cookie == cookie)) {
+    if(!IsWebRTCSession){
         session = await StartSession(cookie, targetApp);
         sessions.Add(session);
         Logger.Log($"New session for cookie={cookie} app={targetApp}");
+	}
+        else {
+	    session = StartWebRTCSession(cookie, targetApp, cleanup);
+	    Logger.Log("WebRTC Session Requested");
+            sessions.Add(session);
+        }
     } else {
         session = sessions.First(s => s.Cookie == cookie);
         Logger.Log($"Existing session for cookie={cookie} app={targetApp}");
     }
     await Task.Delay(150);
+    if(!session.IsWebRTCSession){
     context.Response.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
+    }
+    else
+    {
+    context.Response.Redirect($"{BASE_PATH}static/vncrtc.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
+    }
+    //context.Response.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
 });
 
 // WS forwarder endpoint: not directly seen by the user, only by vnc_lite.html.
@@ -519,6 +696,12 @@ struct ActiveSessions {
     public int Display;
     public int VncPort;
     public int WebsockifyPort;
+    public bool   IsWebRTCSession;        // true=WebRTC, false=WebSocket
+    public DateTime WebRTCFirstSpawnTime;
+    public int AttemptCount;
+    public string WebRTCConfigOurs;
+    public string WebRTCConfigTheirs;
+
 }
 
 static class Logger {
@@ -588,5 +771,60 @@ public static class UnixWS
                                                      keepAliveInterval: TimeSpan.FromMinutes(2));
         Logger.Log("WebSocket instance created from stream.");
         return webSocket;
+    }
+}
+
+public class ForwarderConfigOut
+{
+    public string Type = "";
+    public string WebRTCMode = "";
+    public string Address = "127.0.0.1";
+    public string Port = "";
+    public TomlArray ICEServers = new TomlArray() {
+            new TomlTable()
+            {
+                ["URLs"] = new TomlArray()
+                {
+                    "stun:vz.al"
+                }
+            },
+            new TomlTable()
+            {
+                ["URLs"] = new TomlArray()
+                {
+                    "stun:stun.l.google.com:19302"
+                }
+            }
+        };
+    public string PublishType = "ws";
+    public string PublishEndpoint = "";
+    public string PublishAuthType = "";
+    public string PublishAuthUser = "";
+    public string PublishAuthPass = "";
+    public string PeerAuthType = "PSK";
+    public string PeerPSK = "";
+    public bool Publish = true;
+    public long TimeoutCountMax = 15;
+
+    public TomlTable ToTomlTable()
+    {
+        return new TomlTable()
+        {
+            ["Type"] = Type,
+            ["WebRTCMode"] = WebRTCMode,
+            ["Address"] = Address,
+            ["Port"] = Port,
+            ["Publish"] = Publish,
+            ["PublishType"] = PublishType,
+            ["PublishEndpoint"] = PublishEndpoint,
+            ["PublishAuthType"] = PublishAuthType,
+            ["PublishAuthUser"] = PublishAuthUser,
+            ["PublishAuthPass"] = PublishAuthPass,
+            ["PeerAuthType"] = PeerAuthType,
+            ["PeerPSK"] = PeerPSK,
+            ["ICEServers"] = ICEServers,
+            ["TimeoutCountMax"] = TimeoutCountMax
+
+        };
     }
 }
