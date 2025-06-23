@@ -483,18 +483,6 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
         Type = "UDS",
         WebRTCMode = "Offer",
     }).ToTomlTable());
-    /*var AnswererToml = Toml.FromModel((new ForwarderConfigOut()
-    {
-        Address = $"unix-{vncPort}",
-        PublishAuthUser = randomUsername,
-        PublishAuthPass = randomPassword,
-        PeerPSK = randomPeerPSK,
-        PublishEndpoint = $"wss://vz.al/anonwsmul/{randomSessionName}/wsa",
-        Port = $"unix-{vncPort}",
-        PublishAuthType = "Basic",
-        Type = "UDS",
-        WebRTCMode = "Accept",
-    }).ToTomlTable());*/
     // build base table
     var atbl = new ForwarderConfigOut
     {
