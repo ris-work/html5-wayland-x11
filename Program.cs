@@ -310,7 +310,7 @@ async Task SpawnVNCChildProcess(ActiveSessions s,
 				   string args,
                                    Action<ActiveSessions> cleanup)
 {
-    for (int i = 0; i < ATTEMPT_TIMES; i++)
+    for (int i = 0; i < 1; i++) // WE ONLY LAUNCH ONCE ATTEMPT_TIMES; i++)
     {
         s.AttemptCount++;
         Logger.Log($"[VNC {i+1}/{ATTEMPT_TIMES}] launch cookie={s.Cookie} config={command} {args}");
@@ -334,7 +334,7 @@ async Task SpawnVNCChildProcess(ActiveSessions s,
         p.Exited += (_,__) =>
         {
             s.LastActive = DateTime.UtcNow;
-            Logger.Log($"VNCd exited code={p.ExitCode}");
+            Logger.Log($"swaymsg exec VNCd exited code={p.ExitCode}");
             tcs.TrySetResult(true);
         };
         p.Start();
@@ -371,7 +371,8 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
         Logger.Log($"Warning: Wayland server on port {RTSock} did not open");
     await Task.Delay(1000);
     var wayVncLauncherCommand = "swaymsg";
-    var wayVncLauncherArgs = $"-s {RTSock} exec \"wayvnc -v -C /dev/null --unix-socket {Path.Combine(Directory.GetCurrentDirectory(),"unix-")}{vncPort}\" 2>&1 >{RTSock}.log";
+    var USock = $"{Path.Combine(Directory.GetCurrentDirectory(),"unix-")}{vncPort}";
+    var wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"while :; do wayvnc -v -C /dev/null --unix-socket {USock} >{RTSock}.log; echo Restarting: wayvnc {RTSock}@{USock}; rm {USock}; done\\\"\"";
     //wayVncLauncher.Environment["WLR_BACKENDS"] = "headless";
     //wayVncLauncher.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
     Console.WriteLine($"wayvnc: {wayVncLauncherCommand} {wayVncLauncherArgs}");
