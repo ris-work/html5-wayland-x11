@@ -45,26 +45,26 @@ string? DEFAULT_PROGRAM_NAME = Environment.GetEnvironmentVariable("DEFAULT_PROGR
 string? PAGE = Environment.GetEnvironmentVariable("PAGE");
 int W = int.Parse(RESOLUTION_WIDTH ?? "1024");
 int H = int.Parse(RESOLUTION_HEIGHT ?? "768");
-if(PAGE == null) PAGE="vnc_lite.html";
+if (PAGE == null) PAGE = "vnc_lite.html";
 approvedCommands = approvedCommands.ToList().Append(DEFAULT_PROGRAM_NAME).ToArray();
 if (string.IsNullOrEmpty(DEFAULT_PROGRAM_NAME))
-    {
-        DEFAULT_PROGRAM_NAME = "xeyes";
-    }
+{
+    DEFAULT_PROGRAM_NAME = "xeyes";
+}
 defaultApp = DEFAULT_PROGRAM_NAME;
 
 // Retrieve the WEBSOCKIFY environment variable.
 // If it is not provided or is empty, default to "websockify".
 string WEBSOCKIFY = Environment.GetEnvironmentVariable("WEBSOCKIFY");
 if (string.IsNullOrEmpty(WEBSOCKIFY))
-    {
-        WEBSOCKIFY = "websockify";
-    }
+{
+    WEBSOCKIFY = "websockify";
+}
 string BASE_PATH = Environment.GetEnvironmentVariable("BASE_PATH");
 if (string.IsNullOrEmpty(BASE_PATH))
-    {
-        BASE_PATH = "/";
-    }
+{
+    BASE_PATH = "/";
+}
 if (BASE_PATH != "/")
 {
     if (!BASE_PATH.StartsWith("/") || !BASE_PATH.EndsWith("/"))
@@ -117,12 +117,14 @@ if (!Directory.Exists(sharedFolder))
 }
 
 // Explicitly set permissions to 0777 (rwx for user, group, and others).
-try{
-var mode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
-           UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute |
-           UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute;
-File.SetUnixFileMode(sharedFolder, mode);
-}catch {}
+try
+{
+    var mode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+               UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute |
+               UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute;
+    File.SetUnixFileMode(sharedFolder, mode);
+}
+catch { }
 // Create a secure canonical temporary folder.
 //var tempDir = Path.Combine(Path.GetTempPath(), "MyAppStatic", Guid.NewGuid().ToString("N"));
 var tempDir = Path.Combine(sharedFolder, Environment.UserName, Guid.NewGuid().ToString("N"));
@@ -146,7 +148,8 @@ if (!Directory.Exists(staticDir))
     // Fallback to the extraction directory (typically AppContext.BaseDirectory)
     baseDir = AppContext.BaseDirectory;
     staticDir = Path.Combine(baseDir, "static");
-    if(!Directory.Exists(staticDir)){
+    if (!Directory.Exists(staticDir))
+    {
         baseDir = tempDir;
         staticDir = baseDir;
     }
@@ -156,7 +159,8 @@ if (!Directory.Exists(staticDir))
 // why: serve static files with correct MIME for .js files
 var provider = new FileExtensionContentTypeProvider();
 provider.Mappings[".js"] = "application/javascript";
-app.UseStaticFiles(new StaticFileOptions {
+app.UseStaticFiles(new StaticFileOptions
+{
     //FileProvider = new PhysicalFileProvider(Path.Combine(Directory.GetCurrentDirectory(), "static")),
     FileProvider = new PhysicalFileProvider(staticDir),
     RequestPath = "/static",
@@ -165,9 +169,11 @@ app.UseStaticFiles(new StaticFileOptions {
 //app.UseWebSockets();
 
 // why: on shutdown, force all sessions to quit
-app.Lifetime.ApplicationStopping.Register(() => {
+app.Lifetime.ApplicationStopping.Register(() =>
+{
     Logger.Log("Application stopping; terminating sessions");
-    foreach (var s in sessions) {
+    foreach (var s in sessions)
+    {
         try { if (!s.WebsockifyProcess.HasExited) s.WebsockifyProcess.Kill(); } catch { }
         try { if (!s.VncProcess.HasExited) s.VncProcess.Kill(); } catch { }
         try { if (!s.AppProcess.HasExited) s.AppProcess.Kill(); } catch { }
@@ -194,7 +200,8 @@ app.Use(async (context, next) =>
 app.UseWebSockets();
 
 bool Authenticate(string cookie) => true;
-int GetFreePort() {
+int GetFreePort()
+{
     using var listener = new TcpListener(IPAddress.Loopback, 0);
     listener.Start();
     int port = ((IPEndPoint)listener.LocalEndpoint).Port;
@@ -202,9 +209,11 @@ int GetFreePort() {
     Logger.Log($"FreePort allocated: {port}");
     return port;
 }
-bool WaitForPortOpen(int port, int timeoutMs = 5000) {
+bool WaitForPortOpen(int port, int timeoutMs = 5000)
+{
     var sw = Stopwatch.StartNew();
-    while (sw.ElapsedMilliseconds < timeoutMs) {
+    while (sw.ElapsedMilliseconds < timeoutMs)
+    {
         try { using (var client = new TcpClient("127.0.0.1", port)) return true; }
         catch { Thread.Sleep(100); }
     }
@@ -233,7 +242,7 @@ bool WaitForUnixSocketOpen(string socketPath, int timeoutMs = 5000)
     }
     return false;
 }
-Action<ActiveSessions> cleanup = (ActiveSessions A) => {};
+Action<ActiveSessions> cleanup = (ActiveSessions A) => { };
 var GenerateConfig = (int s) => { return s.ToString(); };
 async Task SpawnWebRTCChildProcess(ActiveSessions s,
                                    string config,
@@ -242,23 +251,23 @@ async Task SpawnWebRTCChildProcess(ActiveSessions s,
     for (int i = 0; i < ATTEMPT_TIMES; i++)
     {
         s.AttemptCount++;
-        Logger.Log($"[WebRTC {i+1}/{ATTEMPT_TIMES}] launch cookie={s.Cookie} config={config}");
+        Logger.Log($"[WebRTC {i + 1}/{ATTEMPT_TIMES}] launch cookie={s.Cookie} config={config}");
         var p = new Process
         {
             StartInfo = new ProcessStartInfo
             {
-                FileName               = WEBRTC_PROCESS_NAME,
-                Arguments              = config,
+                FileName = WEBRTC_PROCESS_NAME,
+                Arguments = config,
                 RedirectStandardOutput = false,
-                RedirectStandardError  = false,
-                UseShellExecute        = true,
-                CreateNoWindow         = true
+                RedirectStandardError = false,
+                UseShellExecute = true,
+                CreateNoWindow = true
             },
             EnableRaisingEvents = true
         };
         s.AppProcess = p;
         var tcs = new TaskCompletionSource<bool>();
-        p.Exited += (_,__) =>
+        p.Exited += (_, __) =>
         {
             s.LastActive = DateTime.UtcNow;
             Logger.Log($"WebRTC fwd exited code={p.ExitCode}");
@@ -277,15 +286,17 @@ ActiveSessions StartWebRTCSession(string cookie,
                                   Action<ActiveSessions> cleanup)
 {
     int vncPort = GetFreePort();
-    int display = new Random().Next(1,100);
+    int display = new Random().Next(1, 100);
     var vnc = Process.Start(new ProcessStartInfo(
         "setsid",
         $"{vncserver} :{display} -rfbunixpath unix-{vncPort} -SecurityTypes None -geometry {W}x{H}"
-    ){ UseShellExecute = true })!;
+    )
+    { UseShellExecute = true })!;
     var vncDummy = Process.Start(new ProcessStartInfo(
         "setsid",
         $"udsecho unix-{vncPort} "
-    ){ UseShellExecute = true })!;
+    )
+    { UseShellExecute = true })!;
     if (!WaitForUnixSocketOpen($"unix-{vncPort}"))
         Logger.Log($"Warning: vnc @ unix-{vncPort} did not open");
 
@@ -312,7 +323,7 @@ ActiveSessions StartWebRTCSession(string cookie,
     string randomSessionName = Wiry.Base32.Base32Encoding.Standard.GetString(randomSessionNameBytes);
 
 
-    
+
 
     /* Generate WebRTC Forwarder TOML configuration */
     var OffererToml = Toml.FromModel((new ForwarderConfigOut()
@@ -327,7 +338,8 @@ ActiveSessions StartWebRTCSession(string cookie,
         Type = "UDS",
         WebRTCMode = "Offer",
     }).ToTomlTable());
-    var AnswererToml = Toml.FromModel((new ForwarderConfigOut()
+    // build base table
+    var atbl = new ForwarderConfigOut
     {
         Address = $"unix-{vncPort}",
         PublishAuthUser = randomUsername,
@@ -338,7 +350,20 @@ ActiveSessions StartWebRTCSession(string cookie,
         PublishAuthType = "Basic",
         Type = "UDS",
         WebRTCMode = "Accept",
-    }).ToTomlTable());
+    }.ToTomlTable();
+
+    // inject TURN if set
+    if (Environment.GetEnvironmentVariable("ANSWERER_TURN_SERVER") is string turn && turn != "")
+        atbl["ICEServers"] = new TomlArray {
+        new TomlTable {
+            ["URLs"]       = new TomlArray { turn },
+            ["Username"]   = Environment.GetEnvironmentVariable("ANSWERER_TURN_USERNAME"),
+            ["Credential"] = Environment.GetEnvironmentVariable("ANSWERER_TURN_CREDENTIAL")
+        }
+    };
+
+    // serialize
+    var AnswererToml = Toml.FromModel(atbl);
     var ourForwarderToml = AnswererToml;
     var theirForwarderToml = OffererToml;
     configOurs = AnswererToml;
@@ -347,17 +372,17 @@ ActiveSessions StartWebRTCSession(string cookie,
 
     var s = new ActiveSessions
     {
-        Cookie            = cookie,
-        LastActive        = DateTime.UtcNow,
-        VncProcess        = vncDummy,
+        Cookie = cookie,
+        LastActive = DateTime.UtcNow,
+        VncProcess = vncDummy,
         WebsockifyProcess = null,
-        AppProcess        = appProc,
-        VncPort           = vncPort,
-        WebsockifyPort    = 0,
-        IsWebRTCSession   = true,
-        WebRTCConfigOurs      = configOurs,
+        AppProcess = appProc,
+        VncPort = vncPort,
+        WebsockifyPort = 0,
+        IsWebRTCSession = true,
+        WebRTCConfigOurs = configOurs,
         WebRTCConfigTheirs = configTheirs,
-        AttemptCount      = 0
+        AttemptCount = 0
     };
     File.WriteAllText($"webrtc-config-{vncPort}.toml", configOurs);
 
@@ -366,24 +391,29 @@ ActiveSessions StartWebRTCSession(string cookie,
 }
 
 
-ActiveSessions StartSession(string cookie, string procName) {
+ActiveSessions StartSession(string cookie, string procName)
+{
     int vncPort = GetFreePort(), wsPort = GetFreePort(), display = new Random().Next(1, 100);
     var vnc = Process.Start(new ProcessStartInfo("setsid", $"{vncserver} :{display} -rfbunixpath unix-{vncPort} -SecurityTypes None -geometry {W}x{H}") { UseShellExecute = false })!;
     if (!WaitForUnixSocketOpen($"unix-{vncPort}"))
         Logger.Log($"Warning: vnc server on port unix-{vncPort} did not open");
-    var appProc = Process.Start(new ProcessStartInfo(procName) {
+    var appProc = Process.Start(new ProcessStartInfo(procName)
+    {
         UseShellExecute = false,
         Environment = { ["DISPLAY"] = $":{display}" }
     })!;
     Process wsProc;
-    if(WEBSOCKIFY=="websockify-rs") {
-    wsProc = Process.Start(new ProcessStartInfo("websockify-rs", $"unix-{vncPort} ws-{wsPort} --listen-unix --upstream-unix") { UseShellExecute = false })!;
+    if (WEBSOCKIFY == "websockify-rs")
+    {
+        wsProc = Process.Start(new ProcessStartInfo("websockify-rs", $"unix-{vncPort} ws-{wsPort} --listen-unix --upstream-unix") { UseShellExecute = false })!;
     }
-    else{
-    wsProc = Process.Start(new ProcessStartInfo("websockify", $"--unix-listen=ws-{wsPort} --unix-target=unix-{vncPort}") { UseShellExecute = false })!;
+    else
+    {
+        wsProc = Process.Start(new ProcessStartInfo("websockify", $"--unix-listen=ws-{wsPort} --unix-target=unix-{vncPort}") { UseShellExecute = false })!;
     }
     Logger.Log($"Session started: cookie={cookie}, d:{display}, vnc(pid={vnc.Id}@unix-{vncPort}), {procName}(pid={appProc.Id}), ws(pid={wsProc.Id}@{wsPort})");
-    return new ActiveSessions {
+    return new ActiveSessions
+    {
         Cookie = cookie,
         LastActive = DateTime.UtcNow,
         VncProcess = vnc,
@@ -393,19 +423,23 @@ ActiveSessions StartSession(string cookie, string procName) {
         WebsockifyPort = wsPort
     };
 }
-void UpdateSession(string cookie) {
+void UpdateSession(string cookie)
+{
     int idx = sessions.FindIndex(s => s.Cookie == cookie);
-    if (idx != -1) {
+    if (idx != -1)
+    {
         var s = sessions[idx];
         s.LastActive = DateTime.UtcNow;
         sessions[idx] = s;
         Logger.Log($"Session updated: cookie={cookie}, LastActive={s.LastActive:O}");
     }
 }
-async Task Pump(WebSocket src, WebSocket dst, string cookie) {
+async Task Pump(WebSocket src, WebSocket dst, string cookie)
+{
     var buffer = new byte[4096];
     Logger.Log($"Pump started for cookie={cookie}");
-    while (src.State == WebSocketState.Open) {
+    while (src.State == WebSocketState.Open)
+    {
         var result = await src.ReceiveAsync(buffer, CancellationToken.None);
         if (result.MessageType == WebSocketMessageType.Close) break;
         UpdateSession(cookie);
@@ -414,26 +448,33 @@ async Task Pump(WebSocket src, WebSocket dst, string cookie) {
     }
     Logger.Log($"Pump ended for cookie={cookie}");
 }
-_ = Task.Run(async () => {
-    while (true) {
+_ = Task.Run(async () =>
+{
+    while (true)
+    {
         await Task.Delay(5000);
-        sessions.RemoveAll(s => {
-            if (s.IsWebRTCSession) {
-                if (s.AttemptCount >= ATTEMPT_TIMES) {
+        sessions.RemoveAll(s =>
+        {
+            if (s.IsWebRTCSession)
+            {
+                if (s.AttemptCount >= ATTEMPT_TIMES)
+                {
                     Logger.Log($"WebRTC done: cookie={s.Cookie} attempts={s.AttemptCount}; killing");
-                    try { if (!s.AppProcess.HasExited)     s.AppProcess.Kill();     } catch {}
-                    try { if (!s.WebsockifyProcess.HasExited) s.WebsockifyProcess.Kill(); } catch {}
-                    try { if (!s.VncProcess.HasExited)     s.VncProcess.Kill();     } catch {}
+                    try { if (!s.AppProcess.HasExited) s.AppProcess.Kill(); } catch { }
+                    try { if (!s.WebsockifyProcess.HasExited) s.WebsockifyProcess.Kill(); } catch { }
+                    try { if (!s.VncProcess.HasExited) s.VncProcess.Kill(); } catch { }
                     return true;
                 }
             }
-            else {
+            else
+            {
                 var idleSec = (DateTime.UtcNow - s.LastActive).TotalSeconds;
-                if (idleSec > KILL_WAIT) {
+                if (idleSec > KILL_WAIT)
+                {
                     Logger.Log($"WS idle: cookie={s.Cookie} idle for {idleSec}s; killing");
-                    try { if (!s.AppProcess.HasExited)     s.AppProcess.Kill();     } catch {}
-                    try { if (!s.WebsockifyProcess.HasExited) s.WebsockifyProcess.Kill(); } catch {}
-                    try { if (!s.VncProcess.HasExited)     s.VncProcess.Kill();     } catch {}
+                    try { if (!s.AppProcess.HasExited) s.AppProcess.Kill(); } catch { }
+                    try { if (!s.WebsockifyProcess.HasExited) s.WebsockifyProcess.Kill(); } catch { }
+                    try { if (!s.VncProcess.HasExited) s.VncProcess.Kill(); } catch { }
                     return true;
                 }
             }
@@ -446,7 +487,8 @@ _ = Task.Run(async () => {
 app.MapGet("/WebRTCInfo", (string session) =>
 {
     var idx = sessions.FindIndex(x => x.Cookie == session && x.IsWebRTCSession);
-    if (idx < 0){
+    if (idx < 0)
+    {
         Logger.Log($"WebRTCInfo: NOT FOUND: {session}");
         return Results.NotFound();
     }
@@ -457,16 +499,18 @@ app.MapGet("/WebRTCInfo", (string session) =>
 
 
 // GET "/" route: redirect user only to vnc_lite.html (WS endpoint is passed as querystring without leading slash)
-app.MapGet("/", async (HttpContext context) => {
+app.MapGet("/", async (HttpContext context) =>
+{
     string targetApp = context.Request.Query["app"];
     string QIsWebRTCSession = context.Request.Query["WebRTC"];
     Logger.Log($"QIsWebRTCSession: {QIsWebRTCSession}");
     if (string.IsNullOrEmpty(QIsWebRTCSession))
-    	QIsWebRTCSession="false";
+        QIsWebRTCSession = "false";
     bool IsWebRTCSession = QIsWebRTCSession.ToLowerInvariant() == "true";
     if (string.IsNullOrEmpty(targetApp))
         targetApp = defaultApp;
-    if (!approvedCommands.Contains(targetApp)) { // why: restrict allowed commands
+    if (!approvedCommands.Contains(targetApp))
+    { // why: restrict allowed commands
         Logger.Log($"Disallowed app '{targetApp}' requested, defaulting to {defaultApp}");
         targetApp = defaultApp;
     }
@@ -474,35 +518,43 @@ app.MapGet("/", async (HttpContext context) => {
     string cookie = context.Request.Cookies[sessionCookieName] ?? Guid.NewGuid().ToString();
     context.Response.Cookies.Append(sessionCookieName, cookie);
     ActiveSessions session;
-    if (!sessions.Any(s => s.Cookie == cookie)) {
-        if(!IsWebRTCSession){
+    if (!sessions.Any(s => s.Cookie == cookie))
+    {
+        if (!IsWebRTCSession)
+        {
             session = StartSession(cookie, targetApp);
             sessions.Add(session);
             Logger.Log($"New session for cookie={cookie} app={targetApp}");
         }
-        else {
-	    session = StartWebRTCSession(cookie, targetApp, cleanup);
-	    Logger.Log("WebRTC Session Requested");
+        else
+        {
+            session = StartWebRTCSession(cookie, targetApp, cleanup);
+            Logger.Log("WebRTC Session Requested");
             sessions.Add(session);
         }
-    } else {
+    }
+    else
+    {
         session = sessions.First(s => s.Cookie == cookie);
         Logger.Log($"Existing session for cookie={cookie} app={targetApp}");
     }
     await Task.Delay(1500);
-    if(!session.IsWebRTCSession){
-    context.Response.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
+    if (!session.IsWebRTCSession)
+    {
+        context.Response.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
     }
     else
     {
-    context.Response.Redirect($"{BASE_PATH}static/vncrtc.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
+        context.Response.Redirect($"{BASE_PATH}static/vncrtc.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
     }
 });
 
 // WS forwarder endpoint: not directly seen by the user, only by vnc_lite.html.
-RequestDelegate WsHandler =  async (HttpContext context) => {
+RequestDelegate WsHandler = async (HttpContext context) =>
+{
     string targetApp = (string?)context.Request.RouteValues["targetApp"] ?? defaultApp;
-    if (!approvedCommands.Contains(targetApp)) {
+    if (!approvedCommands.Contains(targetApp))
+    {
         Logger.Log($"Disallowed app in WS: '{targetApp}', defaulting to {defaultApp}");
         targetApp = defaultApp;
     }
@@ -510,18 +562,21 @@ RequestDelegate WsHandler =  async (HttpContext context) => {
     string cookie = context.Request.Cookies[sessionCookieName] ?? Guid.NewGuid().ToString();
     if (context.Request.Cookies[sessionCookieName] is null)
         context.Response.Cookies.Append(sessionCookieName, cookie);
-    if (!context.WebSockets.IsWebSocketRequest) {
+    if (!context.WebSockets.IsWebSocketRequest)
+    {
         context.Response.StatusCode = 400;
         Logger.Log($"{targetApp} ws rejected: not WS request");
         return;
     }
-    if (!Authenticate(cookie)) {
+    if (!Authenticate(cookie))
+    {
         context.Response.StatusCode = 401;
         Logger.Log($"{targetApp} ws rejected: auth failed");
         return;
     }
     int idx = sessions.FindIndex(s => s.Cookie == cookie);
-    if (idx == -1) {
+    if (idx == -1)
+    {
         var session = StartSession(cookie, targetApp);
         sessions.Add(session);
         idx = sessions.Count - 1;
@@ -529,30 +584,40 @@ RequestDelegate WsHandler =  async (HttpContext context) => {
     }
     var userSession = sessions[idx];
     WebSocket ws = null;
-    try {
+    try
+    {
         ws = await context.WebSockets.AcceptWebSocketAsync();
         Logger.Log($"WS upgrade accepted for cookie={cookie} in app={targetApp}");
-    } catch (Exception ex) {
+    }
+    catch (Exception ex)
+    {
         Logger.Log($"WS upgrade failed for cookie={cookie} in app={targetApp}: {ex.Message}");
         return;
     }
-    using (ws) {
+    using (ws)
+    {
         //using var client = new ClientWebSocket();
-	using var client = await UnixWS.ConnectAsync($"ws-{userSession.WebsockifyPort}", "localhost", "/");
-        try {
+        using var client = await UnixWS.ConnectAsync($"ws-{userSession.WebsockifyPort}", "localhost", "/");
+        try
+        {
             //await client.ConnectAsync(new Uri($"ws://127.0.0.1:{userSession.WebsockifyPort}"), CancellationToken.None);
             Logger.Log($"Internal WS connected for cookie={cookie} in app={targetApp}");
-        } catch (Exception ex) {
+        }
+        catch (Exception ex)
+        {
             Logger.Log($"Internal WS conn failed for cookie={cookie} in app={targetApp}: {ex.Message}");
             return;
         }
         var t1 = Pump(ws, client, cookie);
         var t2 = Pump(client, ws, cookie);
         await Task.WhenAny(t1, t2);
-        try {
+        try
+        {
             await client.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
             await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
-        } catch (Exception ex) {
+        }
+        catch (Exception ex)
+        {
             Logger.Log($"Error closing WS for cookie={cookie} in app={targetApp}: {ex.Message}");
         }
         Logger.Log($"WS closed for cookie={cookie} in app={targetApp}");
@@ -602,7 +667,8 @@ app.Run();
 // Type declarations must come after top-level statements.
 // ----------------------------------------------------------------
 
-struct ActiveSessions {
+struct ActiveSessions
+{
     public string Cookie;
     public DateTime LastActive;
     public Process VncProcess;
@@ -610,7 +676,7 @@ struct ActiveSessions {
     public Process AppProcess;
     public int VncPort;
     public int WebsockifyPort;
-    public bool   IsWebRTCSession;        // true=WebRTC, false=WebSocket
+    public bool IsWebRTCSession;        // true=WebRTC, false=WebSocket
     public DateTime WebRTCFirstSpawnTime;
     public int AttemptCount;
     public string WebRTCConfigOurs;
@@ -618,9 +684,11 @@ struct ActiveSessions {
 
 }
 
-static class Logger {
+static class Logger
+{
     public static bool Debug { get; set; }
-    public static void Log(string msg) {
+    public static void Log(string msg)
+    {
         if (Debug)
             Console.WriteLine($"[{DateTime.UtcNow:O}] {msg}");
     }
