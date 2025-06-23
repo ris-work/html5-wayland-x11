@@ -72,9 +72,11 @@
         // This function is called when we are disconnected
         function disconnectedFromServer(e) {
             if (e.detail.clean) {
-                status("Disconnected");
+                status("Disconnected, retrying...");
+		initDC();
             } else {
-                status("Something went wrong, connection is closed");
+                status("Something went wrong, connection is closed, retrying...");
+		initDC();
             }
         }
 
@@ -168,6 +170,7 @@
         rfb.viewOnly = readQueryVariable('view_only', false);
         rfb.scaleViewport = readQueryVariable('scale', false);
 	}
+	initDC();
     </script>
 </head>
 
