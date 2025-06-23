@@ -305,29 +305,114 @@ async Task SpawnWebRTCChildProcess(ActiveSessions s,
     }
     cleanup(s);
 }
+async Task SpawnVNCChildProcess(ActiveSessions s,
+                                   string command,
+				   string args,
+                                   Action<ActiveSessions> cleanup)
+{
+    for (int i = 0; i < ATTEMPT_TIMES; i++)
+    {
+        s.AttemptCount++;
+        Logger.Log($"[VNC {i+1}/{ATTEMPT_TIMES}] launch cookie={s.Cookie} config={command} {args}");
+        var p = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName               = command,
+                Arguments              = args,
+                RedirectStandardOutput = false,
+                RedirectStandardError  = false,
+                UseShellExecute        = true,
+                CreateNoWindow         = true
+            },
+            EnableRaisingEvents = true
+        };
+    	p.StartInfo.Environment["WLR_BACKENDS"] = "headless";
+    	p.StartInfo.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
+        s.AppProcess = p;
+        var tcs = new TaskCompletionSource<bool>();
+        p.Exited += (_,__) =>
+        {
+            s.LastActive = DateTime.UtcNow;
+            Logger.Log($"VNCd exited code={p.ExitCode}");
+            tcs.TrySetResult(true);
+        };
+        p.Start();
+        await tcs.Task;
+    }
+    cleanup(s);
+}
 
-ActiveSessions StartWebRTCSession(string cookie,
+async Task<ActiveSessions> StartWebRTCSession(string cookie,
                                   string procName,
                                   Action<ActiveSessions> cleanup)
 {
-    int vncPort = GetFreePort();
-    int display = new Random().Next(1,100);
-    var vnc = Process.Start(new ProcessStartInfo(
+    int vncPort = GetFreePort(), display = new Random().Next(1, 100);
+    string RTDir = $"{Path.Combine(Directory.GetCurrentDirectory(),"wl-")}{display}";
+    string RTSock = $"{RTDir}.swaysock";
+    string WLSock = $"{RTDir}.wlsock";
+    var swayPsi = new ProcessStartInfo("setsid", $"sway -c empty_sway_startup")
+    {
+        UseShellExecute = false,
+    };
+    //swayPsi.Environment["SWAYSOCK"] = $"{Path.Combine(Directory.GetCurrentDirectory(),"wl-")}{display}.swaysock";
+    swayPsi.Environment["SWAYSOCK"] = $"{RTSock}";
+    Console.WriteLine($"{swayPsi.Environment["SWAYSOCK"]}");
+    swayPsi.Environment["XDG_RUNTIME_DIR"] = $"{RTDir}";
+    swayPsi.Environment["WLR_BACKENDS"] = "headless";
+    swayPsi.Environment["WLR_RENDERER"] = "pixman";
+    swayPsi.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
+    swayPsi.Environment["MESA_LOADER_DEIVER_OVERRIDE"] = "llvmpipe";
+    try{Directory.CreateDirectory($"{RTDir}");}catch{};
+    var vnc = Process.Start(swayPsi)!;
+    // One-liner swaymsg commands:
+    // Launch wayvnc with its UNIX socket set to "unix-{vncPort}.vncsock".
+    if (!WaitForUnixSocketOpen($"{RTSock}"))
+        Logger.Log($"Warning: Wayland server on port {RTSock} did not open");
+    await Task.Delay(1000);
+    var wayVncLauncherCommand = "swaymsg";
+    var wayVncLauncherArgs = $"-s {RTSock} exec \"wayvnc -v -C /dev/null --unix-socket {Path.Combine(Directory.GetCurrentDirectory(),"unix-")}{vncPort}\" 2>&1 >{RTSock}.log";
+    //wayVncLauncher.Environment["WLR_BACKENDS"] = "headless";
+    //wayVncLauncher.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
+    Console.WriteLine($"wayvnc: {wayVncLauncherCommand} {wayVncLauncherArgs}");
+    //Process.Start(wayVncLauncher);
+    //Console.WriteLine("Started wayvnc");
+    await Task.Delay(100);
+    if (!WaitForFileCreation($"unix-{vncPort}"))
+        Logger.Log($"Warning: vnc server on port unix-{vncPort} did not open");
+    var appProc = Process.Start(new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"{procName}\"") {
+        UseShellExecute = false,
+    })!;
+    await Task.Delay(50);
+    Logger.Log($"Session started: cookie={cookie}, d:{display}, vnc(pid={vnc.Id}@unix-{vncPort}), {procName}(pid={appProc.Id})");
+    /*return new ActiveSessions {
+        Cookie = cookie,
+        LastActive = DateTime.UtcNow,
+        VncProcess = vnc,
+        WebsockifyProcess = wsProc,
+        AppProcess = appProc,
+	Display = display,
+        VncPort = vncPort,
+        WebsockifyPort = wsPort
+    };*/
+    //int vncPort = GetFreePort();
+    //int display = new Random().Next(1,100);
+    /*var vnc = Process.Start(new ProcessStartInfo(
         "setsid",
         $"{vncserver} :{display} -rfbunixpath unix-{vncPort} -SecurityTypes None -geometry {W}x{H}"
-    ){ UseShellExecute = true })!;
+    ){ UseShellExecute = true })!;*/
     var vncDummy = Process.Start(new ProcessStartInfo(
         "setsid",
         $"udsecho unix-{vncPort} "
     ){ UseShellExecute = true })!;
-    if (!WaitForUnixSocketOpen($"unix-{vncPort}"))
-        Logger.Log($"Warning: vnc @ unix-{vncPort} did not open");
+    /*if (!WaitForUnixSocketOpen($"unix-{vncPort}"))
+        Logger.Log($"Warning: vnc @ unix-{vncPort} did not open");*/
 
-    var appProc = Process.Start(new ProcessStartInfo(procName)
+    /*var appProc = Process.Start(new ProcessStartInfo(procName)
     {
         UseShellExecute = false,
         Environment = { ["DISPLAY"] = $":{display}" }
-    })!;
+    })!;*/
 
     byte[] peerPSK = new byte[40];
     byte[] randomUsernameBytes = new byte[20];
@@ -395,7 +480,10 @@ ActiveSessions StartWebRTCSession(string cookie,
     };
     File.WriteAllText($"webrtc-config-{vncPort}.toml", configOurs);
 
+    _ = SpawnVNCChildProcess(s, wayVncLauncherCommand, wayVncLauncherArgs, cleanup);
+    Logger.Log("Spawned VNC child");
     _ = SpawnWebRTCChildProcess(s, $"webrtc-config-{vncPort}.toml", cleanup);
+    Logger.Log("Spawned RTC child");
     return s;
 }
 
@@ -558,7 +646,7 @@ app.MapGet("/", async (HttpContext context) => {
         Logger.Log($"New session for cookie={cookie} app={targetApp}");
 	}
         else {
-	    session = StartWebRTCSession(cookie, targetApp, cleanup);
+	    session = await StartWebRTCSession(cookie, targetApp, cleanup);
 	    Logger.Log("WebRTC Session Requested");
             sessions.Add(session);
         }
