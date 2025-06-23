@@ -495,7 +495,7 @@ app.MapGet("/", async (HttpContext context) => {
     }
     else
     {
-    context.Response.Redirect($"{BASE_PATH}WebRTCInfo/?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
+    context.Response.Redirect($"{BASE_PATH}WebRTCInfo/?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
     }
 });
 
