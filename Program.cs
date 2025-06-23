@@ -30,7 +30,7 @@ const int ATTEMPT_TIMES = 500;
 string defaultApp = "xclock"; // why: default safe app
 string[] approvedCommands = new string[] { "xeyes", "xclock", "scalc", "vkcube", "glxgears", "xgc", "oclock", "ico", "xcalc" }; // why: restrict allowed commands
 List<ActiveSessions> sessions = new();
-Logger.Debug = false; // why: enable logging
+Logger.Debug = true; // why: enable logging
 
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
@@ -79,7 +79,31 @@ if (BASE_PATH != "/")
         Environment.Exit(1);
     }
 }
-app.UsePathBase(BASE_PATH);
+// Custom middleware to normalize multiple slashes to a single slash and log changes.
+app.Use(async (context, next) =>
+{
+    //System.Console.WriteLine($"Request path: {context.Request.Path.Value} {context.Request.Path.Value.GetType()}");
+    if (context.Request.Path.Value is string path && path.Contains("//"))
+    {
+        System.Console.WriteLine($"Normalized request path from {path}");
+        var newPath = Regex.Replace(path, @"[/]+", "/");
+        if (newPath != path)
+        {
+            // Log the normalization event
+            app.Logger.LogInformation($"Normalized request path from {path} to {newPath}");
+            //System.Console.WriteLine($"Normalized request path from {path} to {newPath}");
+            context.Request.Path = newPath;
+        }
+    }
+    await next();
+});
+app.UsePathBase(BASE_PATH.TrimEnd('/'));
+app.Use(async (context, next) =>
+{
+    Logger.Log($"Request: PathBase: {context.Request.PathBase}, Path: {context.Request.Path}");
+    await next();
+});
+Console.WriteLine($"BASE_PATH: {BASE_PATH.TrimEnd('/')}");
 // Windows 2000–style Sway config as one C# string: right-click on the titlebar (border) only
 string _2kSwayConfig = 
     "set $bg      #C0C0C0\n" +
@@ -198,7 +222,7 @@ app.Lifetime.ApplicationStopping.Register(() => {
 });
 
 // Custom middleware to normalize multiple slashes to a single slash and log changes.
-app.Use(async (context, next) =>
+/*app.Use(async (context, next) =>
 {
     //System.Console.WriteLine($"Request path: {context.Request.Path.Value} {context.Request.Path.Value.GetType()}");
     if (context.Request.Path.Value is string path && path.Contains("//"))
@@ -214,7 +238,7 @@ app.Use(async (context, next) =>
         }
     }
     await next();
-});
+});*/
 app.UseWebSockets();
 bool Authenticate(string cookie) => true;
 int GetFreePort() {
@@ -372,7 +396,7 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     await Task.Delay(1000);
     var wayVncLauncherCommand = "swaymsg";
     var USock = $"{Path.Combine(Directory.GetCurrentDirectory(),"unix-")}{vncPort}";
-    var wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"while :; do wayvnc -v -C /dev/null --unix-socket {USock} >{RTSock}.log; echo Restarting: wayvnc {RTSock}@{USock}; rm {USock}; done\\\"\"";
+    var wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"while :; rm {USock}; do wayvnc -v -C /dev/null --unix-socket {USock} >{RTSock}.log; echo Restarting: wayvnc {RTSock}@{USock}; rm {USock}; [ -S \\\"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\\\" ] && echo Sway still alive || break; done\\\"\"";
     //wayVncLauncher.Environment["WLR_BACKENDS"] = "headless";
     //wayVncLauncher.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
     Console.WriteLine($"wayvnc: {wayVncLauncherCommand} {wayVncLauncherArgs}");
@@ -770,6 +794,7 @@ app.MapFallback(async context =>
     await context.Response.WriteAsync("Not Found");
 });
 
+app.UseRouting();
 app.Run();
 
 // ----------------------------------------------------------------
