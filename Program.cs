@@ -595,6 +595,7 @@ app.MapFallback(async context =>
     context.Response.StatusCode = StatusCodes.Status404NotFound;
     await context.Response.WriteAsync("Not Found");
 });
+app.UseRouting();
 app.Run();
 
 // ----------------------------------------------------------------
