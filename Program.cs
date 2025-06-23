@@ -26,8 +26,8 @@ using System.Data;
 
 const int KILL_WAIT = 150;
 const string WEBRTC_PROCESS_NAME = "t-a-c";
-const int ATTEMPT_TIMES = 500;
-string defaultApp = "xclock"; // why: default safe app
+const int ATTEMPT_TIMES = 30;
+string defaultApp = "xpaint"; // why: default safe app
 string[] approvedCommands = new string[] { "xeyes", "xclock", "scalc", "vkcube", "glxgears", "xgc", "oclock", "ico", "xcalc" }; // why: restrict allowed commands
 List<ActiveSessions> sessions = new();
 Logger.Debug = true; // why: enable logging
@@ -471,7 +471,7 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
         Type = "UDS",
         WebRTCMode = "Offer",
     }).ToTomlTable());
-    var AnswererToml = Toml.FromModel((new ForwarderConfigOut()
+    /*var AnswererToml = Toml.FromModel((new ForwarderConfigOut()
     {
         Address = $"unix-{vncPort}",
         PublishAuthUser = randomUsername,
@@ -482,7 +482,34 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
         PublishAuthType = "Basic",
         Type = "UDS",
         WebRTCMode = "Accept",
-    }).ToTomlTable());
+    }).ToTomlTable());*/
+    // build base table
+var atbl = new ForwarderConfigOut
+{
+    Address          = $"unix-{vncPort}",
+    PublishAuthUser  = randomUsername,
+    PublishAuthPass  = randomPassword,
+    PeerPSK          = randomPeerPSK,
+    PublishEndpoint  = $"wss://vz.al/anonwsmul/{randomSessionName}/wsa",
+    Port             = $"unix-{vncPort}",
+    PublishAuthType  = "Basic",
+    Type             = "UDS",
+    WebRTCMode       = "Accept",
+}.ToTomlTable();
+
+// inject TURN if set
+if (Environment.GetEnvironmentVariable("ANSWERER_TURN_SERVER") is string turn && turn != "")
+    atbl["ICEServers"] = new TomlArray {
+        new TomlTable {
+            ["URLs"]       = new TomlArray { turn },
+            ["Username"]   = Environment.GetEnvironmentVariable("ANSWERER_TURN_USERNAME"),
+            ["Credential"] = Environment.GetEnvironmentVariable("ANSWERER_TURN_CREDENTIAL")
+        }
+    };
+
+// serialize
+var AnswererToml = Toml.FromModel(atbl);
+
     var ourForwarderToml = AnswererToml;
     var theirForwarderToml = OffererToml;
     configOurs = AnswererToml;
