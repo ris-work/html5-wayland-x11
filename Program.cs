@@ -223,6 +223,25 @@ bool WaitForPortOpen(int port, int timeoutMs = 5000)
     }
     return false;
 }
+async Task<bool> WaitForUnixSocketOpenAsync(string socketPath, int timeoutMs = 5000)
+{
+    var sw = Stopwatch.StartNew();
+    while (sw.ElapsedMilliseconds < timeoutMs)
+    {
+        try
+        {
+            using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+            await socket.ConnectAsync(new UnixDomainSocketEndPoint(socketPath));
+            return true;
+        }
+        catch
+        {
+            await Task.Delay(100);
+        }
+    }
+    return false;
+}
+
 bool WaitForUnixSocketOpen(string socketPath, int timeoutMs = 5000)
 {
     var sw = Stopwatch.StartNew();
@@ -287,7 +306,7 @@ async Task SpawnWebRTCChildProcess(ActiveSessions s,
 
 
 //var cleanup = (_) => {};
-ActiveSessions StartWebRTCSession(string cookie,
+async Task<ActiveSessions> StartWebRTCSession(string cookie,
                                   string procName,
                                   Action<ActiveSessions> cleanup)
 {
@@ -307,7 +326,7 @@ ActiveSessions StartWebRTCSession(string cookie,
     )
     { UseShellExecute = true })!;
     Console.WriteLine($"RECORD_SCREEN: {RECORD_SCREEN}");
-    if (!WaitForUnixSocketOpen($"{USock}"))
+    if (!await WaitForUnixSocketOpenAsync($"{USock}"))
         Logger.Log($"Warning: vnc @ {USock} did not open");
 
     var appProc = Process.Start(new ProcessStartInfo(procName)
@@ -400,7 +419,7 @@ ActiveSessions StartWebRTCSession(string cookie,
     {
         Duplicator = Process.Start(new ProcessStartInfo("duplicator", $"{ShouldConnectToUSock} {USock} screendump") { UseShellExecute = true });
         Console.WriteLine($"Duplicator: listen: {ShouldConnectToUSock} to: {USock}");
-        if (!WaitForUnixSocketOpen($"{USock}"))
+        if (!await WaitForUnixSocketOpenAsync($"{USock}"))
             Logger.Log($"Warning: vnc server on port {ShouldConnectToUSock} did not open");
         //Duplicator = Process.Start("duplicator", $"{ShouldConnectToUSock} {USock} screendump");
     }
@@ -411,7 +430,7 @@ ActiveSessions StartWebRTCSession(string cookie,
 }
 
 
-ActiveSessions StartSession(string cookie, string procName)
+async Task<ActiveSessions> StartSession(string cookie, string procName)
 {
     int vncPort = GetFreePort(), wsPort = GetFreePort(), display = new Random().Next(1, 100);
     var USock = $"{Path.Combine(Directory.GetCurrentDirectory(), "unix-")}{vncPort}";
@@ -419,7 +438,7 @@ ActiveSessions StartSession(string cookie, string procName)
     if (RECORD_SCREEN) USock = $"{USock}.orig";
     try { File.Delete(USock); } catch { }
     var vnc = Process.Start(new ProcessStartInfo("setsid", $"{vncserver} :{display} -rfbunixpath {USock} -SecurityTypes None -geometry {W}x{H}") { UseShellExecute = false })!;
-    if (!WaitForUnixSocketOpen($"{USock}"))
+    if (!await WaitForUnixSocketOpenAsync($"{USock}"))
         Logger.Log($"Warning: vnc server on port {USock} did not open");
     var appProc = Process.Start(new ProcessStartInfo(procName)
     {
@@ -430,7 +449,7 @@ ActiveSessions StartSession(string cookie, string procName)
     if (RECORD_SCREEN)
     {
         Duplicator = Process.Start(new ProcessStartInfo("duplicator", $"{ShouldConnectToUSock} {USock} screendump") { UseShellExecute = true });
-        if (!WaitForUnixSocketOpen($"{ShouldConnectToUSock}"))
+        if (!await WaitForUnixSocketOpenAsync($"{ShouldConnectToUSock}"))
             Logger.Log($"Warning: vnc server on port {ShouldConnectToUSock} did not open");
     }
     Process wsProc;
@@ -556,13 +575,13 @@ app.MapGet("/", async (HttpContext context) =>
     {
         if (!IsWebRTCSession)
         {
-            session = StartSession(cookie, targetApp);
+            session = await StartSession(cookie, targetApp);
             sessions.Add(session);
             Logger.Log($"New session for cookie={cookie} app={targetApp}");
         }
         else
         {
-            session = StartWebRTCSession(cookie, targetApp, cleanup);
+            session = await StartWebRTCSession(cookie, targetApp, cleanup);
             Logger.Log("WebRTC Session Requested");
             sessions.Add(session);
         }
@@ -611,7 +630,7 @@ RequestDelegate WsHandler = async (HttpContext context) =>
     int idx = sessions.FindIndex(s => s.Cookie == cookie);
     if (idx == -1)
     {
-        var session = StartSession(cookie, targetApp);
+        var session = await StartSession(cookie, targetApp);
         sessions.Add(session);
         idx = sessions.Count - 1;
         Logger.Log($"Session restarted for cookie={cookie} app={targetApp}");
