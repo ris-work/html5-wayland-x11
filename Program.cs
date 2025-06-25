@@ -460,12 +460,12 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     /* Generate WebRTC Forwarder TOML configuration */
     var OffererToml = Toml.FromModel((new ForwarderConfigOut()
     {
-        Address = $"unix-{vncPort}",
+        Address = $"{ShouldConnectToUSock}",
         PublishAuthUser = randomUsername,
         PublishAuthPass = randomPassword,
         PeerPSK = randomPeerPSK,
         PublishEndpoint = $"wss://vz.al/anonwsmul/{randomSessionName}/wso",
-        Port = $"unix-{vncPort}",
+        Port = $"{ShouldConnectToUSock}",
         PublishAuthType = "Basic",
         Type = "UDS",
         WebRTCMode = "Offer",
@@ -473,12 +473,12 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     // build base table
     var atbl = new ForwarderConfigOut
     {
-        Address = $"unix-{vncPort}",
+        Address = $"{ShouldConnectToUSock}",
         PublishAuthUser = randomUsername,
         PublishAuthPass = randomPassword,
         PeerPSK = randomPeerPSK,
         PublishEndpoint = $"wss://vz.al/anonwsmul/{randomSessionName}/wsa",
-        Port = $"unix-{vncPort}",
+        Port = $"{ShouldConnectToUSock}",
         PublishAuthType = "Basic",
         Type = "UDS",
         WebRTCMode = "Accept",
@@ -598,13 +598,13 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
     Process wsProc;
     if (WEBSOCKIFY == "websockify-rs")
     {
-        wsProc = Process.Start(new ProcessStartInfo("websockify-rs", $"unix-{vncPort} ws-{wsPort} --listen-unix --upstream-unix") { UseShellExecute = false })!;
+        wsProc = Process.Start(new ProcessStartInfo("websockify-rs", $"{ShouldConnectToUSock} ws-{wsPort} --listen-unix --upstream-unix") { UseShellExecute = false })!;
     }
     else
     {
-        wsProc = Process.Start(new ProcessStartInfo("websockify", $"--unix-listen=ws-{wsPort} --unix-target=unix-{vncPort}") { UseShellExecute = false })!;
+        wsProc = Process.Start(new ProcessStartInfo("websockify", $"--unix-listen=ws-{wsPort} --unix-target={ShouldConnectToUSock}") { UseShellExecute = false })!;
     }
-    Logger.Log($"Session started: cookie={cookie}, d:{display}, vnc(pid={vnc.Id}@unix-{vncPort}), {procName}(pid={appProc.Id}), ws(pid={wsProc.Id}@{wsPort})");
+    Logger.Log($"Session started: cookie={cookie}, d:{display}, vnc(pid={vnc.Id}@{ShouldConnectToUSock}), {procName}(pid={appProc.Id}), ws(pid={wsProc.Id}@{wsPort})");
     return new ActiveSessions
     {
         Cookie = cookie,
