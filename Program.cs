@@ -42,6 +42,7 @@ var vncserver = "Xtigervnc";
 string? RESOLUTION_WIDTH = Environment.GetEnvironmentVariable("RESOLUTION_WIDTH");
 string? RESOLUTION_HEIGHT = Environment.GetEnvironmentVariable("RESOLUTION_HEIGHT");
 string? DEFAULT_PROGRAM_NAME = Environment.GetEnvironmentVariable("DEFAULT_PROGRAM_NAME");
+bool RECORD_SCREEN = false;
 string? PAGE = Environment.GetEnvironmentVariable("PAGE");
 int W = int.Parse(RESOLUTION_WIDTH ?? "1024");
 int H = int.Parse(RESOLUTION_HEIGHT ?? "768");
@@ -52,6 +53,7 @@ if (string.IsNullOrEmpty(DEFAULT_PROGRAM_NAME))
     DEFAULT_PROGRAM_NAME = "xeyes";
 }
 defaultApp = DEFAULT_PROGRAM_NAME;
+if (Environment.GetEnvironmentVariable("RECORD_SCREEN")?.ToLowerInvariant() == "true") RECORD_SCREEN = true;
 
 // Retrieve the WEBSOCKIFY environment variable.
 // If it is not provided or is empty, default to "websockify".
@@ -681,6 +683,7 @@ struct ActiveSessions
     public int AttemptCount;
     public string WebRTCConfigOurs;
     public string WebRTCConfigTheirs;
+    public Process? Duplicator;
 
 }
 
