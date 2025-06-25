@@ -223,9 +223,10 @@ app.Lifetime.ApplicationStopping.Register(() =>
     Logger.Log("Application stopping; terminating sessions");
     foreach (var s in sessions)
     {
-        try { if (!s.WebsockifyProcess.HasExited) s.WebsockifyProcess.Kill(); } catch { }
+        try { if (s.WebsockifyProcess != null && !s.WebsockifyProcess.HasExited) s.WebsockifyProcess.Kill(); } catch { }
         try { if (!s.VncProcess.HasExited) s.VncProcess.Kill(); } catch { }
         try { if (!s.AppProcess.HasExited) s.AppProcess.Kill(); } catch { }
+        try { if (s.Duplicator != null && !s.Duplicator.HasExited) s.Duplicator.Kill(); } catch { }
     }
 });
 
@@ -304,7 +305,9 @@ bool WaitForUnixSocketOpen(string socketPath, int timeoutMs = 5000)
     }
     return false;
 }
-Action<ActiveSessions> cleanup = (ActiveSessions A) => { };
+Action<ActiveSessions> cleanup = (ActiveSessions A) =>
+{
+};
 var GenerateConfig = (int s) => { return s.ToString(); };
 async Task SpawnWebRTCChildProcess(ActiveSessions s,
                                    string config,
@@ -375,7 +378,6 @@ async Task SpawnVNCChildProcess(ActiveSessions s,
         p.Start();
         await tcs.Task;
     }
-    cleanup(s);
 }
 
 async Task<ActiveSessions> StartWebRTCSession(string cookie,
@@ -655,8 +657,9 @@ _ = Task.Run(async () =>
                 {
                     Logger.Log($"WebRTC done: cookie={s.Cookie} attempts={s.AttemptCount}; killing");
                     try { if (!s.AppProcess.HasExited) s.AppProcess.Kill(); } catch { }
-                    try { if (!s.WebsockifyProcess.HasExited) s.WebsockifyProcess.Kill(); } catch { }
+                    try { if (s.WebsockifyProcess != null && !s.WebsockifyProcess.HasExited) s.WebsockifyProcess.Kill(); } catch { }
                     try { if (!s.VncProcess.HasExited) s.VncProcess.Kill(); } catch { }
+                    try { if (s.Duplicator != null && !s.Duplicator.HasExited) s.Duplicator.Kill(); } catch { }
                     return true;
                 }
             }
@@ -883,7 +886,7 @@ struct ActiveSessions
     public string Cookie;
     public DateTime LastActive;
     public Process VncProcess;
-    public Process WebsockifyProcess;
+    public Process? WebsockifyProcess;
     public Process AppProcess;
     public int Display;
     public int VncPort;
