@@ -378,7 +378,7 @@ ActiveSessions StartWebRTCSession(string cookie,
     var theirForwarderToml = OffererToml;
     configOurs = AnswererToml;
     string configTheirs = OffererToml;
-    Logger.Log($"Session started WebRTC: cookie={cookie}, display={display}, vnc(pid={vncDummy.Id}), app(pid={appProc.Id}), config={configOurs}, configTheirs={configTheirs}");
+    Logger.Log($"Session started WebRTC: cookie={cookie}, display={display}, vnc(pid={vncDummy.Id}), app(pid={appProc.Id}), config={configOurs}, configTheirs={configTheirs}, ShouldConnectToSock={ShouldConnectToUSock}, USock={USock}");
 
     var s = new ActiveSessions
     {
