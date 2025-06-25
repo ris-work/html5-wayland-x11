@@ -418,39 +418,12 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     await Task.Delay(100);
     if (!WaitForFileCreation($"{USock}"))
         Logger.Log($"Warning: vnc server on port {USock} did not open");
-    /*Process? Duplicator = null;
-    if (RECORD_SCREEN)
-    {
-        Duplicator = Process.Start(new ProcessStartInfo("duplicator", $"{ShouldConnectToUSock} {USock} screendump") { UseShellExecute = true });
-        Console.WriteLine($"Duplicator: listen: {ShouldConnectToUSock} to: {USock}");
-        if (!WaitForFileCreation($"{USock}"))
-            Logger.Log($"Warning: vnc server on port {ShouldConnectToUSock} did not open");
-        //Duplicator = Process.Start("duplicator", $"{ShouldConnectToUSock} {USock} screendump");
-    }*/
-    //Process.Start(wayVncLauncher);
-    //Console.WriteLine("Started wayvnc");
     var appProc = Process.Start(new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"{procName}\"")
     {
         UseShellExecute = false,
     })!;
     await Task.Delay(50);
     Logger.Log($"Session started: cookie={cookie}, d:{display}, vnc(pid={vnc.Id}@unix-{vncPort}), {procName}(pid={appProc.Id})");
-    /*return new ActiveSessions {
-        Cookie = cookie,
-        LastActive = DateTime.UtcNow,
-        VncProcess = vnc,
-        WebsockifyProcess = wsProc,
-        AppProcess = appProc,
-	Display = display,
-        VncPort = vncPort,
-        WebsockifyPort = wsPort
-    };*/
-    //int vncPort = GetFreePort();
-    //int display = new Random().Next(1,100);
-    /*var vnc = Process.Start(new ProcessStartInfo(
-        "setsid",
-        $"{vncserver} :{display} -rfbunixpath unix-{vncPort} -SecurityTypes None -geometry {W}x{H}"
-    ){ UseShellExecute = true })!;*/
     var vncDummy = Process.Start(new ProcessStartInfo(
         "setsid",
         $"udsecho unix-{vncPort} "
@@ -561,6 +534,7 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
         //Duplicator = Process.Start("duplicator", $"{ShouldConnectToUSock} {USock} screendump");
     }
     _ = SpawnWebRTCChildProcess(s, $"webrtc-config-{vncPort}.toml", cleanup);
+    s.Duplicator = Duplicator;
     Logger.Log("Spawned RTC child");
     return s;
 }
