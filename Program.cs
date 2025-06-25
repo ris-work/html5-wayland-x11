@@ -251,6 +251,26 @@ bool WaitForPortOpen(int port, int timeoutMs = 5000)
     }
     return false;
 }
+static async Task<bool> WaitForFileCreationAsync(
+    string filePath,
+    int timeoutMs = 5000,
+    CancellationToken cancellationToken = default)
+{
+    var sw = Stopwatch.StartNew();
+
+    while (sw.ElapsedMilliseconds < timeoutMs)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (File.Exists(filePath))
+            return true;
+
+        // frees up the thread instead of blocking it
+        await Task.Delay(100, cancellationToken);
+    }
+
+    return false;
+}
 bool WaitForFileCreation(string filePath, int timeoutMs = 5000)
 {
     var sw = Stopwatch.StartNew();
@@ -264,6 +284,25 @@ bool WaitForFileCreation(string filePath, int timeoutMs = 5000)
     }
     return false;
 }
+async Task<bool> WaitForUnixSocketOpenAsync(string socketPath, int timeoutMs = 5000)
+{
+    var sw = Stopwatch.StartNew();
+    while (sw.ElapsedMilliseconds < timeoutMs)
+    {
+        try
+        {
+            using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+            await socket.ConnectAsync(new UnixDomainSocketEndPoint(socketPath));
+            return true;
+        }
+        catch
+        {
+            await Task.Delay(100);
+        }
+    }
+    return false;
+}
+
 bool WaitForUnixSocketOpen(string socketPath, int timeoutMs = 5000)
 {
     var sw = Stopwatch.StartNew();
@@ -400,7 +439,7 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     Console.WriteLine($"wayvnc: {wayVncLauncherCommand} {wayVncLauncherArgs}");
     Console.WriteLine($"RECORD_SCREEN: {RECORD_SCREEN}");
     await Task.Delay(100);
-    if (!WaitForFileCreation($"{USock}"))
+    if (!await WaitForFileCreationAsync($"{USock}"))
         Logger.Log($"Warning: vnc server on port {USock} did not open");
     var appProc = Process.Start(new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"{procName}\"")
     {
@@ -498,14 +537,14 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
 
     _ = SpawnVNCChildProcess(s, wayVncLauncherCommand, wayVncLauncherArgs, cleanup);
     Logger.Log("Spawned VNC child");
-    if (!WaitForFileCreation($"{USock}"))
+    if (!await WaitForFileCreationAsync($"{USock}"))
         Logger.Log($"Warning: vnc server on port {USock} did not open");
     Process? Duplicator = null;
     if (RECORD_SCREEN)
     {
         Duplicator = Process.Start(new ProcessStartInfo("duplicator", $"{ShouldConnectToUSock} {USock} screendump") { UseShellExecute = true });
         Console.WriteLine($"Duplicator: listen: {ShouldConnectToUSock} to: {USock}");
-        if (!WaitForFileCreation($"{USock}"))
+        if (!await WaitForFileCreationAsync($"{USock}"))
             Logger.Log($"Warning: vnc server on port {ShouldConnectToUSock} did not open");
         //Duplicator = Process.Start("duplicator", $"{ShouldConnectToUSock} {USock} screendump");
     }
@@ -540,7 +579,7 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
     var vnc = Process.Start(swayPsi)!;
     // One-liner swaymsg commands:
     // Launch wayvnc with its UNIX socket set to "unix-{vncPort}.vncsock".
-    if (!WaitForUnixSocketOpen($"{RTSock}"))
+    if (!await WaitForFileCreationAsync($"{RTSock}"))
         Logger.Log($"Warning: Wayland server on port {RTSock} did not open");
     await Task.Delay(1000);
     var USock = $"{Path.Combine(Directory.GetCurrentDirectory(), "unix-")}{vncPort}";
@@ -564,7 +603,7 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
         Duplicator = Process.Start(new ProcessStartInfo("duplicator", $"{ShouldConnectToUSock} {USock} screendump") { UseShellExecute = true });
     }
     await Task.Delay(100);
-    if (!WaitForFileCreation($"{USock}"))
+    if (!await WaitForFileCreationAsync($"{USock}"))
         Logger.Log($"Warning: vnc server on port unix-{vncPort} did not open");
     var appProc = Process.Start(new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"{procName}\"")
     {
