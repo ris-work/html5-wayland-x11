@@ -27,7 +27,7 @@ using System.Data;
 
 const int KILL_WAIT = 45;
 const string WEBRTC_PROCESS_NAME = "t-a-c";
-const int ATTEMPT_TIMES = 500;
+const int ATTEMPT_TIMES = 30;
 string defaultApp = "xclock"; // why: default safe app
 string[] approvedCommands = new string[] { "xeyes", "xclock", "scalc", "vkcube", "glxgears", "xgc", "oclock", "ico", "xcalc", "abuse", "a7xpg", "gunroar", "rrootage", "noiz2sa" }; // why: restrict allowed commands
 List<ActiveSessions> sessions = new();
@@ -82,6 +82,7 @@ if (BASE_PATH != "/")
         Environment.Exit(1);
     }
 }
+Console.WriteLine($"BASE_PATH: {BASE_PATH}");
 app.UsePathBase(BASE_PATH);
 File.WriteAllText("empty_x_startup", "#!/bin/sh\nexec tail -f /dev/null");
 File.SetUnixFileMode("empty_x_startup", File.GetUnixFileMode("empty_x_startup") | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
@@ -289,9 +290,12 @@ ActiveSessions StartWebRTCSession(string cookie,
 {
     int vncPort = GetFreePort();
     int display = new Random().Next(1, 100);
+    var USock = $"unix-{vncPort}";
+    var ShouldConnectToUSock = USock;
+    if (RECORD_SCREEN) USock = $"{USock}.orig";
     var vnc = Process.Start(new ProcessStartInfo(
         "setsid",
-        $"{vncserver} :{display} -rfbunixpath unix-{vncPort} -SecurityTypes None -geometry {W}x{H}"
+        $"{vncserver} :{display} -rfbunixpath {USock} -SecurityTypes None -geometry {W}x{H}"
     )
     { UseShellExecute = true })!;
     var vncDummy = Process.Start(new ProcessStartInfo(
@@ -299,8 +303,9 @@ ActiveSessions StartWebRTCSession(string cookie,
         $"udsecho unix-{vncPort} "
     )
     { UseShellExecute = true })!;
-    if (!WaitForUnixSocketOpen($"unix-{vncPort}"))
-        Logger.Log($"Warning: vnc @ unix-{vncPort} did not open");
+    Console.WriteLine($"RECORD_SCREEN: {RECORD_SCREEN}");
+    if (!WaitForUnixSocketOpen($"{USock}"))
+        Logger.Log($"Warning: vnc @ {USock} did not open");
 
     var appProc = Process.Start(new ProcessStartInfo(procName)
     {
@@ -330,12 +335,12 @@ ActiveSessions StartWebRTCSession(string cookie,
     /* Generate WebRTC Forwarder TOML configuration */
     var OffererToml = Toml.FromModel((new ForwarderConfigOut()
     {
-        Address = $"unix-{vncPort}",
+        Address = $"{ShouldConnectToUSock}",
         PublishAuthUser = randomUsername,
         PublishAuthPass = randomPassword,
         PeerPSK = randomPeerPSK,
         PublishEndpoint = $"wss://vz.al/anonwsmul/{randomSessionName}/wso",
-        Port = $"unix-{vncPort}",
+        Port = $"{ShouldConnectToUSock}",
         PublishAuthType = "Basic",
         Type = "UDS",
         WebRTCMode = "Offer",
@@ -343,12 +348,12 @@ ActiveSessions StartWebRTCSession(string cookie,
     // build base table
     var atbl = new ForwarderConfigOut
     {
-        Address = $"unix-{vncPort}",
+        Address = $"{ShouldConnectToUSock}",
         PublishAuthUser = randomUsername,
         PublishAuthPass = randomPassword,
         PeerPSK = randomPeerPSK,
         PublishEndpoint = $"wss://vz.al/anonwsmul/{randomSessionName}/wsa",
-        Port = $"unix-{vncPort}",
+        Port = $"{ShouldConnectToUSock}",
         PublishAuthType = "Basic",
         Type = "UDS",
         WebRTCMode = "Accept",
@@ -387,8 +392,18 @@ ActiveSessions StartWebRTCSession(string cookie,
         AttemptCount = 0
     };
     File.WriteAllText($"webrtc-config-{vncPort}.toml", configOurs);
+    Process? Duplicator = null;
+    if (RECORD_SCREEN)
+    {
+        Duplicator = Process.Start(new ProcessStartInfo("duplicator", $"{ShouldConnectToUSock} {USock} screendump") { UseShellExecute = true });
+        Console.WriteLine($"Duplicator: listen: {ShouldConnectToUSock} to: {USock}");
+        if (!WaitForUnixSocketOpen($"{USock}"))
+            Logger.Log($"Warning: vnc server on port {ShouldConnectToUSock} did not open");
+        //Duplicator = Process.Start("duplicator", $"{ShouldConnectToUSock} {USock} screendump");
+    }
 
     _ = SpawnWebRTCChildProcess(s, $"webrtc-config-{vncPort}.toml", cleanup);
+    s.Duplicator = Duplicator;
     return s;
 }
 
@@ -396,22 +411,33 @@ ActiveSessions StartWebRTCSession(string cookie,
 ActiveSessions StartSession(string cookie, string procName)
 {
     int vncPort = GetFreePort(), wsPort = GetFreePort(), display = new Random().Next(1, 100);
-    var vnc = Process.Start(new ProcessStartInfo("setsid", $"{vncserver} :{display} -rfbunixpath unix-{vncPort} -SecurityTypes None -geometry {W}x{H}") { UseShellExecute = false })!;
-    if (!WaitForUnixSocketOpen($"unix-{vncPort}"))
-        Logger.Log($"Warning: vnc server on port unix-{vncPort} did not open");
+    var USock = $"{Path.Combine(Directory.GetCurrentDirectory(), "unix-")}{vncPort}";
+    var ShouldConnectToUSock = USock;
+    if (RECORD_SCREEN) USock = $"{USock}.orig";
+    try { File.Delete(USock); } catch { }
+    var vnc = Process.Start(new ProcessStartInfo("setsid", $"{vncserver} :{display} -rfbunixpath {USock} -SecurityTypes None -geometry {W}x{H}") { UseShellExecute = false })!;
+    if (!WaitForUnixSocketOpen($"{USock}"))
+        Logger.Log($"Warning: vnc server on port {USock} did not open");
     var appProc = Process.Start(new ProcessStartInfo(procName)
     {
         UseShellExecute = false,
         Environment = { ["DISPLAY"] = $":{display}" }
     })!;
+    Process? Duplicator = null;
+    if (RECORD_SCREEN)
+    {
+        Duplicator = Process.Start(new ProcessStartInfo("duplicator", $"{ShouldConnectToUSock} {USock} screendump") { UseShellExecute = true });
+        if (!WaitForUnixSocketOpen($"{ShouldConnectToUSock}"))
+            Logger.Log($"Warning: vnc server on port {ShouldConnectToUSock} did not open");
+    }
     Process wsProc;
     if (WEBSOCKIFY == "websockify-rs")
     {
-        wsProc = Process.Start(new ProcessStartInfo("websockify-rs", $"unix-{vncPort} ws-{wsPort} --listen-unix --upstream-unix") { UseShellExecute = false })!;
+        wsProc = Process.Start(new ProcessStartInfo("websockify-rs", $"{ShouldConnectToUSock} ws-{wsPort} --listen-unix --upstream-unix") { UseShellExecute = false })!;
     }
     else
     {
-        wsProc = Process.Start(new ProcessStartInfo("websockify", $"--unix-listen=ws-{wsPort} --unix-target=unix-{vncPort}") { UseShellExecute = false })!;
+        wsProc = Process.Start(new ProcessStartInfo("websockify", $"--unix-listen=ws-{wsPort} --unix-target={ShouldConnectToUSock}") { UseShellExecute = false })!;
     }
     Logger.Log($"Session started: cookie={cookie}, d:{display}, vnc(pid={vnc.Id}@unix-{vncPort}), {procName}(pid={appProc.Id}), ws(pid={wsProc.Id}@{wsPort})");
     return new ActiveSessions
@@ -422,7 +448,9 @@ ActiveSessions StartSession(string cookie, string procName)
         WebsockifyProcess = wsProc,
         AppProcess = appProc,
         VncPort = vncPort,
-        WebsockifyPort = wsPort
+        WebsockifyPort = wsPort,
+
+        Duplicator = Duplicator,
     };
 }
 void UpdateSession(string cookie)
