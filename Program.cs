@@ -230,24 +230,6 @@ app.Lifetime.ApplicationStopping.Register(() =>
     }
 });
 
-// Custom middleware to normalize multiple slashes to a single slash and log changes.
-/*app.Use(async (context, next) =>
-{
-    //System.Console.WriteLine($"Request path: {context.Request.Path.Value} {context.Request.Path.Value.GetType()}");
-    if (context.Request.Path.Value is string path && path.Contains("//"))
-    {
-        System.Console.WriteLine($"Normalized request path from {path}");
-        var newPath = Regex.Replace(path, @"[/]+", "/");
-        if (newPath != path)
-        {
-            // Log the normalization event
-            app.Logger.LogInformation($"Normalized request path from {path} to {newPath}");
-            //System.Console.WriteLine($"Normalized request path from {path} to {newPath}");
-            context.Request.Path = newPath;
-        }
-    }
-    await next();
-});*/
 app.UseWebSockets();
 bool Authenticate(string cookie) => true;
 int GetFreePort()
@@ -431,14 +413,6 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
         $"udsecho unix-{vncPort} "
     )
     { UseShellExecute = true })!;
-    /*if (!WaitForUnixSocketOpen($"unix-{vncPort}"))
-        Logger.Log($"Warning: vnc @ unix-{vncPort} did not open");*/
-
-    /*var appProc = Process.Start(new ProcessStartInfo(procName)
-    {
-        UseShellExecute = false,
-        Environment = { ["DISPLAY"] = $":{display}" }
-    })!;*/
 
     byte[] peerPSK = new byte[40];
     byte[] randomUsernameBytes = new byte[20];
