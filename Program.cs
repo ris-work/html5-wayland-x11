@@ -41,6 +41,7 @@ var vncserver = ""; //We don't have any, we use the compositor
 string? RESOLUTION_WIDTH = Environment.GetEnvironmentVariable("RESOLUTION_WIDTH");
 string? RESOLUTION_HEIGHT = Environment.GetEnvironmentVariable("RESOLUTION_HEIGHT");
 string? DEFAULT_PROGRAM_NAME = Environment.GetEnvironmentVariable("DEFAULT_PROGRAM_NAME");
+bool RECORD_SCREEN = false;
 string? PAGE = Environment.GetEnvironmentVariable("PAGE");
 int W = int.Parse(RESOLUTION_WIDTH ?? "1024");
 int H = int.Parse(RESOLUTION_HEIGHT ?? "768");
@@ -51,6 +52,7 @@ if (string.IsNullOrEmpty(DEFAULT_PROGRAM_NAME))
     DEFAULT_PROGRAM_NAME = "xeyes";
 }
 defaultApp = DEFAULT_PROGRAM_NAME;
+if (Environment.GetEnvironmentVariable("RECORD_SCREEN")?.ToLowerInvariant() == "true") RECORD_SCREEN = true;
 
 // Retrieve the WEBSOCKIFY environment variable.
 // If it is not provided or is empty, default to "websockify".
@@ -406,15 +408,27 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     await Task.Delay(1000);
     var wayVncLauncherCommand = "swaymsg";
     var USock = $"{Path.Combine(Directory.GetCurrentDirectory(), "unix-")}{vncPort}";
-    var wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"while :; rm -f {USock}; do wayvnc -v -C /dev/null --unix-socket {USock} >{RTSock}.log; echo Restarting: wayvnc {RTSock}@{USock}; rm {USock}; [ -S \\\"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\\\" ] && echo Sway still alive || break; done\\\"\"";
+    var ShouldConnectToUSock = USock;
+    if (RECORD_SCREEN) USock = $"{USock}.orig";
+    var wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"while :; rm -f {USock}; do wayvnc -v -C /dev/null --unix-socket {USock} >{RTSock}.log 2>&1; echo Restarting: wayvnc {RTSock}@{USock}; rm {USock}; [ -S \\\"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\\\" ] && echo Sway still alive || break; done\\\"\"";
     //wayVncLauncher.Environment["WLR_BACKENDS"] = "headless";
     //wayVncLauncher.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
     Console.WriteLine($"wayvnc: {wayVncLauncherCommand} {wayVncLauncherArgs}");
+    Console.WriteLine($"RECORD_SCREEN: {RECORD_SCREEN}");
+    await Task.Delay(100);
+    if (!WaitForFileCreation($"{USock}"))
+        Logger.Log($"Warning: vnc server on port {USock} did not open");
+    /*Process? Duplicator = null;
+    if (RECORD_SCREEN)
+    {
+        Duplicator = Process.Start(new ProcessStartInfo("duplicator", $"{ShouldConnectToUSock} {USock} screendump") { UseShellExecute = true });
+        Console.WriteLine($"Duplicator: listen: {ShouldConnectToUSock} to: {USock}");
+        if (!WaitForFileCreation($"{USock}"))
+            Logger.Log($"Warning: vnc server on port {ShouldConnectToUSock} did not open");
+        //Duplicator = Process.Start("duplicator", $"{ShouldConnectToUSock} {USock} screendump");
+    }*/
     //Process.Start(wayVncLauncher);
     //Console.WriteLine("Started wayvnc");
-    await Task.Delay(100);
-    if (!WaitForFileCreation($"unix-{vncPort}"))
-        Logger.Log($"Warning: vnc server on port unix-{vncPort} did not open");
     var appProc = Process.Start(new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"{procName}\"")
     {
         UseShellExecute = false,
@@ -528,12 +542,24 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
         IsWebRTCSession = true,
         WebRTCConfigOurs = configOurs,
         WebRTCConfigTheirs = configTheirs,
-        AttemptCount = 0
+        AttemptCount = 0,
+        //Duplicator = Duplicator,
     };
     File.WriteAllText($"webrtc-config-{vncPort}.toml", configOurs);
 
     _ = SpawnVNCChildProcess(s, wayVncLauncherCommand, wayVncLauncherArgs, cleanup);
     Logger.Log("Spawned VNC child");
+    if (!WaitForFileCreation($"{USock}"))
+        Logger.Log($"Warning: vnc server on port {USock} did not open");
+    Process? Duplicator = null;
+    if (RECORD_SCREEN)
+    {
+        Duplicator = Process.Start(new ProcessStartInfo("duplicator", $"{ShouldConnectToUSock} {USock} screendump") { UseShellExecute = true });
+        Console.WriteLine($"Duplicator: listen: {ShouldConnectToUSock} to: {USock}");
+        if (!WaitForFileCreation($"{USock}"))
+            Logger.Log($"Warning: vnc server on port {ShouldConnectToUSock} did not open");
+        //Duplicator = Process.Start("duplicator", $"{ShouldConnectToUSock} {USock} screendump");
+    }
     _ = SpawnWebRTCChildProcess(s, $"webrtc-config-{vncPort}.toml", cleanup);
     Logger.Log("Spawned RTC child");
     return s;
@@ -567,7 +593,11 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
     if (!WaitForUnixSocketOpen($"{RTSock}"))
         Logger.Log($"Warning: Wayland server on port {RTSock} did not open");
     await Task.Delay(1000);
-    var wayVncLauncher = new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"wayvnc -v -C /dev/null --unix-socket {Path.Combine(Directory.GetCurrentDirectory(), "unix-")}{vncPort}\" 2>&1 >{RTSock}.log") { UseShellExecute = false };
+    var USock = $"{Path.Combine(Directory.GetCurrentDirectory(), "unix-")}{vncPort}";
+    var ShouldConnectToUSock = USock;
+    if (RECORD_SCREEN) USock = $"{USock}.orig";
+    try { File.Delete(USock); } catch { }
+    var wayVncLauncher = new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"wayvnc -v -C /dev/null --unix-socket {USock}\" 2>&1 >{RTSock}.log") { UseShellExecute = false };
     //wayVncLauncher.Environment["SWAYSOCK"] = $"{RTSock}";
     //Console.WriteLine($"{swayPsi.Environment["SWAYSOCK"]}");
     //wayVncLauncher.Environment["XDG_RUNTIME_DIR"] = $"{RTDir}";
@@ -578,8 +608,13 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
     Console.WriteLine($"Starting wayvnc: {wayVncLauncher.FileName} {wayVncLauncher.Arguments}");
     Process.Start(wayVncLauncher);
     Console.WriteLine("Started wayvnc");
+    Process? Duplicator = null;
+    if (RECORD_SCREEN)
+    {
+        Duplicator = Process.Start(new ProcessStartInfo("duplicator", $"{ShouldConnectToUSock} {USock} screendump") { UseShellExecute = true });
+    }
     await Task.Delay(100);
-    if (!WaitForFileCreation($"unix-{vncPort}"))
+    if (!WaitForFileCreation($"{USock}"))
         Logger.Log($"Warning: vnc server on port unix-{vncPort} did not open");
     var appProc = Process.Start(new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"{procName}\"")
     {
@@ -884,6 +919,7 @@ struct ActiveSessions
     public int AttemptCount;
     public string WebRTCConfigOurs;
     public string WebRTCConfigTheirs;
+    public Process? Duplicator;
 
 }
 
