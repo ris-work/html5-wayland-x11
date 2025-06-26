@@ -73,15 +73,15 @@ The `trunk` branch has the code for pure TCP. Use it if you don't have the lates
 `dotnet run` 
 
 #### Original Fossil Repo(s) 
-[this](https://vz.al/repos/fw/home) 
+[this](https://vz.al/repos/fw/home)   
 [unversioned binaries (uv)](https://vz.al/repos/fw/uv) 
 
 ###### Duplicator 
-https://vz.al/repos/duplicator/home 
+https://vz.al/repos/duplicator/home    
 [unversioned binaries (uv)](https://vz.al/repos/duplicator/uv) 
 
 ###### WebRTC Forwarding Utilities 
-https://vz.al/repos/webrtc-udp-tcp-forwarder/home 
+https://vz.al/repos/webrtc-udp-tcp-forwarder/home    
 [unversioned binaries (uv)](https://vz.al/repos/webrtc-udp-tcp-forwarder/uv) 
 
 ### License
