@@ -26,7 +26,7 @@ using System.Data;
 
 const int KILL_WAIT = 150;
 const string WEBRTC_PROCESS_NAME = "t-a-c";
-const int ATTEMPT_TIMES = 30;
+const int ATTEMPT_TIMES = 3;
 string defaultApp = "xpaint"; // why: default safe app
 string[] approvedCommands = new string[] { "xeyes", "xclock", "scalc", "vkcube", "glxgears", "xgc", "oclock", "ico", "xcalc" }; // why: restrict allowed commands
 List<ActiveSessions> sessions = new();
@@ -336,7 +336,7 @@ async Task SpawnWebRTCChildProcess(ActiveSessions s,
 {
     for (int i = 1; i <= ATTEMPT_TIMES; i++)
     {
-        s.AttemptCount++;
+        //s.AttemptCount++;
         Logger.Log($"[WebRTC {i + 1}/{ATTEMPT_TIMES}] launch cookie={s.Cookie} config={config}");
         var p = new Process
         {
@@ -361,6 +361,7 @@ async Task SpawnWebRTCChildProcess(ActiveSessions s,
         };
         p.Start();
         await tcs.Task;
+	s.AttemptCount = i+1;
     }
     cleanup(s);
 }
@@ -406,10 +407,17 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
                                   Action<ActiveSessions> cleanup)
 {
     int vncPort = GetFreePort(), display = new Random().Next(1, 100);
+    var USock = $"{Path.Combine(Directory.GetCurrentDirectory(), "unix-")}{vncPort}";
+    var ShouldConnectToUSock = USock;
     string RTDir = $"{Path.Combine(Directory.GetCurrentDirectory(), "wl-")}{display}";
     string RTSock = $"{RTDir}.swaysock";
     string WLSock = $"{RTDir}.wlsock";
-    var swayPsi = new ProcessStartInfo("setsid", $"sway -c empty_sway_startup")
+    try { File.Delete(USock); } catch { }
+    try { File.Delete(ShouldConnectToUSock); } catch { }
+    try { File.Delete(RTSock); } catch { }
+    try { Directory.Delete(RTDir, true); } catch { }
+    if (RECORD_SCREEN) USock = $"{USock}.orig";
+    var swayPsi = new ProcessStartInfo("sway", $"-c empty_sway_startup")
     {
         UseShellExecute = false,
     };
@@ -430,12 +438,6 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
         Logger.Log($"Warning: Wayland server on port {RTSock} did not open");
     await Task.Delay(1000);
     var wayVncLauncherCommand = "swaymsg";
-    var USock = $"{Path.Combine(Directory.GetCurrentDirectory(), "unix-")}{vncPort}";
-    var ShouldConnectToUSock = USock;
-    try { File.Delete(USock); } catch { }
-    try { File.Delete(ShouldConnectToUSock); } catch { }
-    try { File.Delete(RTSock); } catch { }
-    if (RECORD_SCREEN) USock = $"{USock}.orig";
     var wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"while :; rm -f {USock}; do wayvnc -v -C /dev/null --unix-socket {USock} >{RTSock}.log 2>&1; echo Restarting: wayvnc {RTSock}@{USock}; rm {USock}; [ -S \\\"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\\\" ] && echo Sway still alive || break; done\\\"\"";
     //wayVncLauncher.Environment["WLR_BACKENDS"] = "headless";
     //wayVncLauncher.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
@@ -450,11 +452,6 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     })!;
     await Task.Delay(50);
     Logger.Log($"Session started: cookie={cookie}, d:{display}, vnc(pid={vnc.Id}@unix-{vncPort}), {procName}(pid={appProc.Id})");
-    var vncDummy = Process.Start(new ProcessStartInfo(
-        "setsid",
-        $"udsecho unix-{vncPort} "
-    )
-    { UseShellExecute = true })!;
 
     byte[] peerPSK = new byte[40];
     byte[] randomUsernameBytes = new byte[20];
@@ -519,13 +516,13 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     var theirForwarderToml = OffererToml;
     configOurs = AnswererToml;
     string configTheirs = OffererToml;
-    Logger.Log($"Session started WebRTC: cookie={cookie}, display={display}, vnc(pid={vncDummy.Id}), app(pid={appProc.Id}), config={configOurs}, configTheirs={configTheirs}");
+    Logger.Log($"Session started WebRTC: cookie={cookie}, display={display}, vnc(pid={vnc.Id}), app(pid={appProc.Id}), config={configOurs}, configTheirs={configTheirs}");
 
     var s = new ActiveSessions
     {
         Cookie = cookie,
         LastActive = DateTime.UtcNow,
-        VncProcess = vncDummy,
+        VncProcess = vnc,
         WebsockifyProcess = null,
         AppProcess = appProc,
         VncPort = vncPort,
@@ -562,16 +559,23 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
 async Task<ActiveSessions> StartSession(string cookie, string procName)
 {
     int vncPort = GetFreePort(), wsPort = GetFreePort(), display = new Random().Next(1, 100);
+    var USock = $"{Path.Combine(Directory.GetCurrentDirectory(), "unix-")}{vncPort}";
+    var ShouldConnectToUSock = USock;
+    if (RECORD_SCREEN) USock = $"{USock}.orig";
     string RTDir = $"{Path.Combine(Directory.GetCurrentDirectory(), "wl-")}{display}";
     string RTSock = $"{RTDir}.swaysock";
     string WLSock = $"{RTDir}.wlsock";
-    var swayPsi = new ProcessStartInfo("setsid", $"sway -c empty_sway_startup")
+    try { File.Delete(USock); } catch { }
+    try { File.Delete(ShouldConnectToUSock); } catch { }
+    try { File.Delete(RTSock); } catch { }
+    try { Directory.Delete(RTDir, true); } catch { }
+    var swayPsi = new ProcessStartInfo("sway", $"-c empty_sway_startup")
     {
         UseShellExecute = false,
     };
     //swayPsi.Environment["SWAYSOCK"] = $"{Path.Combine(Directory.GetCurrentDirectory(),"wl-")}{display}.swaysock";
     swayPsi.Environment["SWAYSOCK"] = $"{RTSock}";
-    Console.WriteLine($"{swayPsi.Environment["SWAYSOCK"]}");
+    Console.WriteLine($"{cookie}'s SWAYSOCK: {swayPsi.Environment["SWAYSOCK"]}");
     swayPsi.Environment["XDG_RUNTIME_DIR"] = $"{RTDir}";
     swayPsi.Environment["WLR_BACKENDS"] = "headless";
     swayPsi.Environment["WLR_RENDERER"] = "pixman";
@@ -585,12 +589,6 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
     if (!await WaitForFileCreationAsync($"{RTSock}"))
         Logger.Log($"Warning: Wayland server on port {RTSock} did not open");
     await Task.Delay(1000);
-    var USock = $"{Path.Combine(Directory.GetCurrentDirectory(), "unix-")}{vncPort}";
-    var ShouldConnectToUSock = USock;
-    if (RECORD_SCREEN) USock = $"{USock}.orig";
-    try { File.Delete(USock); } catch { }
-    try { File.Delete(ShouldConnectToUSock); } catch { }
-    try { File.Delete(RTSock); } catch { }
     var wayVncLauncher = new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"wayvnc -v -C /dev/null --unix-socket {USock}\" 2>&1 >{RTSock}.log") { UseShellExecute = false };
     //wayVncLauncher.Environment["SWAYSOCK"] = $"{RTSock}";
     //Console.WriteLine($"{swayPsi.Environment["SWAYSOCK"]}");
@@ -673,7 +671,7 @@ _ = Task.Run(async () =>
             {
                 if (s.AttemptCount > ATTEMPT_TIMES)
                 {
-                    Console.WriteLine($"Cleaning up idle WebRTC session: cookie {s.cookie} Attempt count {s.AttemptCount}");
+                    Console.WriteLine($"Cleaning up idle WebRTC session: cookie {s.Cookie} Attempt count {s.AttemptCount}");
                     string RTDir = $"{Path.Combine(Directory.GetCurrentDirectory(), "wl-")}{s.Display}";
                     string RTSock = $"{RTDir}.swaysock";
                     Logger.Log($"WebRTC done: cookie={s.Cookie} attempts={s.AttemptCount}; killing");
@@ -904,7 +902,7 @@ app.Run();
 // Type declarations must come after top-level statements.
 // ----------------------------------------------------------------
 
-struct ActiveSessions
+class ActiveSessions
 {
     public string Cookie;
     public DateTime LastActive;
