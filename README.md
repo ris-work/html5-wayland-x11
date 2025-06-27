@@ -6,6 +6,14 @@ To run your desktop apps through the browser. Securely, in a Kiosk mode. It is u
  - emergency/backup access to an app  
  - remote access in general  
 
+| Branch    | Description                          | Fossil link                          | GitHub link                  |
+|-----------|--------------------------------------|--------------------------------------|------------------------------|
+| x11-rtc   | WebRTC-enabled X11 VNC + WebSockets | [Fossil](?cmd=redirect&branch=x11-rtc)  | [GitHub](../tree/x11-rtc)   |
+| sway-rtc  | WebRTC-enabled sway VNC + WebSockets| [Fossil](?cmd=redirect&branch=sway-rtc) | [GitHub](../tree/sway-rtc)  |
+| x11       | WebSockets X11 VNC                   | [Fossil](?cmd=redirect&branch=x11)      | [GitHub](../tree/x11)       |
+| sway      | WebSockets sway VNC                  | [Fossil](?cmd=redirect&branch=sway)     | [GitHub](../tree/sway)      |
+
+
 ## What is this?
 This is a program that is terse and can be used to automatically setup and teardown and manage X11 sessions through noVNC. This, in effect, allows you to run specific comamnds and display them in your browser. 
 In the `uds` branch, there is a config file for `ctwm` that disables all menus and gives typical Microsoft Windows (R)-like behaviour.   
