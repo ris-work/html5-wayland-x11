@@ -415,7 +415,7 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     try { File.Delete(USock); } catch { }
     try { File.Delete(ShouldConnectToUSock); } catch { }
     try { File.Delete(RTSock); } catch { }
-    try { UnixDirectory.Delete(RTDir, true); } catch { }
+    try { Directory.Delete(RTDir, true); } catch { }
     if (RECORD_SCREEN) USock = $"{USock}.orig";
     var swayPsi = new ProcessStartInfo("sway", $"-c empty_sway_startup")
     {
@@ -569,7 +569,7 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
     try { File.Delete(USock); } catch { }
     try { File.Delete(ShouldConnectToUSock); } catch { }
     try { File.Delete(RTSock); } catch { }
-    try { UnixDirectory.Delete(RTDir, true); } catch { }
+    try { Directory.Delete(RTDir, true); } catch { }
     var swayPsi = new ProcessStartInfo("sway", $"-c empty_sway_startup")
     {
         UseShellExecute = false,
@@ -676,7 +676,7 @@ _ = Task.Run(async () =>
                     string RTDir = $"{Path.Combine(Directory.GetCurrentDirectory(), "wl-")}{s.Display}";
                     string RTSock = $"{RTDir}.swaysock";
                     Logger.Log($"WebRTC done: cookie={s.Cookie} attempts={s.AttemptCount}; killing");
-                    try { UnixDirectory.Delete($"{RTDir}", true); } catch { }
+                    try { Directory.Delete($"{RTDir}", true); } catch { }
                     try { File.Delete($"{RTSock}"); } catch { }
                     try { if (!s.AppProcess.HasExited) s.AppProcess.Kill(); } catch { }
                     try { if (s.WebsockifyProcess != null && !s.WebsockifyProcess.HasExited) s.WebsockifyProcess.Kill(); } catch { }
@@ -692,7 +692,7 @@ _ = Task.Run(async () =>
                     Logger.Log($"Session idle: cookie={s.Cookie} idle for {(DateTime.UtcNow - s.LastActive).TotalSeconds}s; killing processes");
                     string RTDir = $"{Path.Combine(Directory.GetCurrentDirectory(), "wl-")}{s.Display}";
                     string RTSock = $"{RTDir}.swaysock";
-                    try { UnixDirectory.Delete($"{RTDir}", true); } catch { }
+                    try { Directory.Delete($"{RTDir}", true); } catch { }
                     try { File.Delete($"{RTSock}"); } catch { }
                     try { File.Delete($"unix-{s.VncPort}"); } catch { }
                     try { File.Delete($"ws-{s.WebsockifyPort}"); } catch { }
