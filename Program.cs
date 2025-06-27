@@ -361,7 +361,7 @@ async Task SpawnWebRTCChildProcess(ActiveSessions s,
         };
         p.Start();
         await tcs.Task;
-	s.AttemptCount = i+1;
+        s.AttemptCount = i + 1;
     }
     cleanup(s);
 }
@@ -415,7 +415,7 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     try { File.Delete(USock); } catch { }
     try { File.Delete(ShouldConnectToUSock); } catch { }
     try { File.Delete(RTSock); } catch { }
-    try { Directory.Delete(RTDir, true); } catch { }
+    try { UnixDirectory.Delete(RTDir, true); } catch { }
     if (RECORD_SCREEN) USock = $"{USock}.orig";
     var swayPsi = new ProcessStartInfo("sway", $"-c empty_sway_startup")
     {
@@ -520,6 +520,7 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
 
     var s = new ActiveSessions
     {
+        Display = display,
         Cookie = cookie,
         LastActive = DateTime.UtcNow,
         VncProcess = vnc,
@@ -568,7 +569,7 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
     try { File.Delete(USock); } catch { }
     try { File.Delete(ShouldConnectToUSock); } catch { }
     try { File.Delete(RTSock); } catch { }
-    try { Directory.Delete(RTDir, true); } catch { }
+    try { UnixDirectory.Delete(RTDir, true); } catch { }
     var swayPsi = new ProcessStartInfo("sway", $"-c empty_sway_startup")
     {
         UseShellExecute = false,
@@ -625,12 +626,12 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
     Logger.Log($"Session started: cookie={cookie}, d:{display}, vnc(pid={vnc.Id}@{ShouldConnectToUSock}), {procName}(pid={appProc.Id}), ws(pid={wsProc.Id}@{wsPort})");
     return new ActiveSessions
     {
+        Display = display,
         Cookie = cookie,
         LastActive = DateTime.UtcNow,
         VncProcess = vnc,
         WebsockifyProcess = wsProc,
         AppProcess = appProc,
-        Display = display,
         VncPort = vncPort,
         WebsockifyPort = wsPort
     };
@@ -675,7 +676,7 @@ _ = Task.Run(async () =>
                     string RTDir = $"{Path.Combine(Directory.GetCurrentDirectory(), "wl-")}{s.Display}";
                     string RTSock = $"{RTDir}.swaysock";
                     Logger.Log($"WebRTC done: cookie={s.Cookie} attempts={s.AttemptCount}; killing");
-                    try { Directory.Delete($"{RTDir}", true); } catch { }
+                    try { UnixDirectory.Delete($"{RTDir}", true); } catch { }
                     try { File.Delete($"{RTSock}"); } catch { }
                     try { if (!s.AppProcess.HasExited) s.AppProcess.Kill(); } catch { }
                     try { if (s.WebsockifyProcess != null && !s.WebsockifyProcess.HasExited) s.WebsockifyProcess.Kill(); } catch { }
@@ -691,7 +692,7 @@ _ = Task.Run(async () =>
                     Logger.Log($"Session idle: cookie={s.Cookie} idle for {(DateTime.UtcNow - s.LastActive).TotalSeconds}s; killing processes");
                     string RTDir = $"{Path.Combine(Directory.GetCurrentDirectory(), "wl-")}{s.Display}";
                     string RTSock = $"{RTDir}.swaysock";
-                    try { Directory.Delete($"{RTDir}", true); } catch { }
+                    try { UnixDirectory.Delete($"{RTDir}", true); } catch { }
                     try { File.Delete($"{RTSock}"); } catch { }
                     try { File.Delete($"unix-{s.VncPort}"); } catch { }
                     try { File.Delete($"ws-{s.WebsockifyPort}"); } catch { }
@@ -1045,5 +1046,39 @@ public class ForwarderConfigOut
             ["TimeoutCountMax"] = TimeoutCountMax
 
         };
+    }
+}
+public static class UnixDirectory
+{
+    public static void Delete(string path, bool recursive)
+    {
+        Logger.Log($"Delete(path=\"{path}\", recursive={recursive})");
+        if (!recursive)
+        {
+            try { Directory.Delete(path, false); Logger.Log("Deleted dir (non-recursive)"); }
+            catch (Exception e) { Logger.Log($"Error: {e.Message}"); }
+            return;
+        }
+        if (!Directory.Exists(path)) { Logger.Log("Directory not found"); return; }
+        // EnumerateFileSystemEntries sees sockets on Linux
+        foreach (var entry in Directory.EnumerateFileSystemEntries(path))
+        {
+            Logger.Log($"Found: {entry}");
+            var attrs = File.GetAttributes(entry);
+            if (attrs.HasFlag(FileAttributes.Directory)) Delete(entry, true);
+            else
+            {
+                Logger.Log($"Deleting: {entry}");
+                try { File.SetAttributes(entry, FileAttributes.Normal); File.Delete(entry); }
+                catch (Exception e) { Logger.Log($"Error deleting {entry}: {e.Message}"); }
+            }
+        }
+        Logger.Log($"Deleting directory: {path}");
+        try { Directory.Delete(path); }
+        catch (Exception e) { Logger.Log($"Error deleting dir: {e.Message}"); }
+        var remaining = Directory.Exists(path)
+            ? string.Join(";", Directory.EnumerateFileSystemEntries(path))
+            : "(none)";
+        Logger.Log($"Remaining entries in \"{path}\": {remaining}");
     }
 }
