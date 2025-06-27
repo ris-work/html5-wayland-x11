@@ -432,6 +432,9 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     var wayVncLauncherCommand = "swaymsg";
     var USock = $"{Path.Combine(Directory.GetCurrentDirectory(), "unix-")}{vncPort}";
     var ShouldConnectToUSock = USock;
+    try { File.Delete(USock); } catch { }
+    try { File.Delete(ShouldConnectToUSock); } catch { }
+    try { File.Delete(RTSock); } catch { }
     if (RECORD_SCREEN) USock = $"{USock}.orig";
     var wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"while :; rm -f {USock}; do wayvnc -v -C /dev/null --unix-socket {USock} >{RTSock}.log 2>&1; echo Restarting: wayvnc {RTSock}@{USock}; rm {USock}; [ -S \\\"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\\\" ] && echo Sway still alive || break; done\\\"\"";
     //wayVncLauncher.Environment["WLR_BACKENDS"] = "headless";
@@ -586,6 +589,8 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
     var ShouldConnectToUSock = USock;
     if (RECORD_SCREEN) USock = $"{USock}.orig";
     try { File.Delete(USock); } catch { }
+    try { File.Delete(ShouldConnectToUSock); } catch { }
+    try { File.Delete(RTSock); } catch { }
     var wayVncLauncher = new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"wayvnc -v -C /dev/null --unix-socket {USock}\" 2>&1 >{RTSock}.log") { UseShellExecute = false };
     //wayVncLauncher.Environment["SWAYSOCK"] = $"{RTSock}";
     //Console.WriteLine($"{swayPsi.Environment["SWAYSOCK"]}");
@@ -668,7 +673,12 @@ _ = Task.Run(async () =>
             {
                 if (s.AttemptCount >= ATTEMPT_TIMES)
                 {
+                    Console.WriteLine($"Cleaning up idle WebRTC session: cookie {s.cookie} Attempt count {s.AttemptCount}");
+                    string RTDir = $"{Path.Combine(Directory.GetCurrentDirectory(), "wl-")}{s.Display}";
+                    string RTSock = $"{RTDir}.swaysock";
                     Logger.Log($"WebRTC done: cookie={s.Cookie} attempts={s.AttemptCount}; killing");
+                    try { Directory.Delete($"{RTDir}", true); } catch { }
+                    try { File.Delete($"{RTSock}"); } catch { }
                     try { if (!s.AppProcess.HasExited) s.AppProcess.Kill(); } catch { }
                     try { if (s.WebsockifyProcess != null && !s.WebsockifyProcess.HasExited) s.WebsockifyProcess.Kill(); } catch { }
                     try { if (!s.VncProcess.HasExited) s.VncProcess.Kill(); } catch { }
