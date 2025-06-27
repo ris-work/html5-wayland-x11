@@ -275,7 +275,6 @@ async Task SpawnWebRTCChildProcess(ActiveSessions s,
 {
     for (int i = 1; i <= ATTEMPT_TIMES; i++)
     {
-        s.AttemptCount++;
         Logger.Log($"[WebRTC {i + 1}/{ATTEMPT_TIMES}] launch cookie={s.Cookie} config={config}");
         var p = new Process
         {
@@ -300,6 +299,7 @@ async Task SpawnWebRTCChildProcess(ActiveSessions s,
         };
         p.Start();
         await tcs.Task;
+        s.AttemptCount = i + i;
     }
     cleanup(s);
 }
@@ -316,13 +316,8 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     var ShouldConnectToUSock = USock;
     if (RECORD_SCREEN) USock = $"{USock}.orig";
     var vnc = Process.Start(new ProcessStartInfo(
-        "setsid",
-        $"{vncserver} :{display} -rfbunixpath {USock} -SecurityTypes None -geometry {W}x{H}"
-    )
-    { UseShellExecute = true })!;
-    var vncDummy = Process.Start(new ProcessStartInfo(
-        "setsid",
-        $"udsecho unix-{vncPort} "
+        $"{vncserver}",
+        $":{display} -rfbunixpath {USock} -SecurityTypes None -geometry {W}x{H}"
     )
     { UseShellExecute = true })!;
     Console.WriteLine($"RECORD_SCREEN: {RECORD_SCREEN}");
@@ -397,13 +392,13 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     var theirForwarderToml = OffererToml;
     configOurs = AnswererToml;
     string configTheirs = OffererToml;
-    Logger.Log($"Session started WebRTC: cookie={cookie}, display={display}, vnc(pid={vncDummy.Id}), app(pid={appProc.Id}), config={configOurs}, configTheirs={configTheirs}, ShouldConnectToSock={ShouldConnectToUSock}, USock={USock}");
+    Logger.Log($"Session started WebRTC: cookie={cookie}, display={display}, vnc(pid={vnc.Id}), app(pid={appProc.Id}), config={configOurs}, configTheirs={configTheirs}, ShouldConnectToSock={ShouldConnectToUSock}, USock={USock}");
 
     var s = new ActiveSessions
     {
         Cookie = cookie,
         LastActive = DateTime.UtcNow,
-        VncProcess = vncDummy,
+        VncProcess = vnc,
         WebsockifyProcess = null,
         AppProcess = appProc,
         VncPort = vncPort,
@@ -437,7 +432,7 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
     var ShouldConnectToUSock = USock;
     if (RECORD_SCREEN) USock = $"{USock}.orig";
     try { File.Delete(USock); } catch { }
-    var vnc = Process.Start(new ProcessStartInfo("setsid", $"{vncserver} :{display} -rfbunixpath {USock} -SecurityTypes None -geometry {W}x{H}") { UseShellExecute = false })!;
+    var vnc = Process.Start(new ProcessStartInfo($"{vncserver}", $" :{display} -rfbunixpath {USock} -SecurityTypes None -geometry {W}x{H}") { UseShellExecute = false })!;
     if (!await WaitForUnixSocketOpenAsync($"{USock}"))
         Logger.Log($"Warning: vnc server on port {USock} did not open");
     var appProc = Process.Start(new ProcessStartInfo(procName)
@@ -509,13 +504,14 @@ _ = Task.Run(async () =>
         {
             if (s.IsWebRTCSession)
             {
-                if (s.AttemptCount >= ATTEMPT_TIMES)
+                Logger.Log($"WebRTC iterating: cookie={s.Cookie} attempts={s.AttemptCount} Attempt times max: {ATTEMPT_TIMES}; let's see if we should kill them...");
+                if (s.AttemptCount > ATTEMPT_TIMES)
                 {
-                    Console.WriteLine($"Cleaning up idle WebRTC session: cookie {s.cookie} Attempt count {s.AttemptCount}");
+                    Logger.Log($"Cleaning up idle WebRTC session: cookie {s.Cookie} Attempt count {s.AttemptCount}");
                     Logger.Log($"WebRTC done: cookie={s.Cookie} attempts={s.AttemptCount}; killing");
                     try { if (!s.AppProcess.HasExited) s.AppProcess.Kill(); } catch { }
                     try { if (s.WebsockifyProcess != null && !s.WebsockifyProcess.HasExited) s.WebsockifyProcess.Kill(); } catch { }
-                    try { if (!s.VncProcess.HasExited) s.VncProcess.Kill(); } catch { }
+                    try { if (!s.VncProcess.HasExited) s.VncProcess.Kill(true); Logger.Log("Killed the main VNCd"); } catch { }
                     try { if (s.Duplicator != null && !s.Duplicator.HasExited) s.Duplicator.Kill(); } catch { }
                     return true;
                 }
@@ -528,7 +524,7 @@ _ = Task.Run(async () =>
                     Logger.Log($"WS idle: cookie={s.Cookie} idle for {idleSec}s; killing");
                     try { if (!s.AppProcess.HasExited) s.AppProcess.Kill(); } catch { }
                     try { if (!s.WebsockifyProcess.HasExited) s.WebsockifyProcess.Kill(); } catch { }
-                    try { if (!s.VncProcess.HasExited) s.VncProcess.Kill(); } catch { }
+                    try { if (!s.VncProcess.HasExited) s.VncProcess.Kill(true); } catch { }
                     return true;
                 }
             }
@@ -721,7 +717,7 @@ app.Run();
 // Type declarations must come after top-level statements.
 // ----------------------------------------------------------------
 
-struct ActiveSessions
+class ActiveSessions
 {
     public string Cookie;
     public DateTime LastActive;
