@@ -438,7 +438,7 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
         Logger.Log($"Warning: Wayland server on port {RTSock} did not open");
     await Task.Delay(1000);
     var wayVncLauncherCommand = "swaymsg";
-    var wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"while :; rm -f {USock}; do wayvnc -v -C /dev/null --unix-socket {USock} >{RTSock}.log 2>&1; echo Restarting: wayvnc {RTSock}@{USock}; rm {USock}; [ -S \\\"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\\\" ] && echo Sway still alive || break; done\\\"\"";
+    var wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"while :; rm -f {USock}; do wayvnc -v -C /dev/null --unix-socket {USock} >{RTSock}.log 2>&1; echo Restarting: wayvnc {RTSock}@{USock}; rm {USock}; [ -S \\\"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\\\" ] && echo Sway still alive || break; sleep 0.2; done\\\"\"";
     //wayVncLauncher.Environment["WLR_BACKENDS"] = "headless";
     //wayVncLauncher.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
     Console.WriteLine($"wayvnc: {wayVncLauncherCommand} {wayVncLauncherArgs}");
