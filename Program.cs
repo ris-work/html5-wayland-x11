@@ -273,7 +273,7 @@ async Task SpawnWebRTCChildProcess(ActiveSessions s,
                                    string config,
                                    Action<ActiveSessions> cleanup)
 {
-    for (int i = 0; i < ATTEMPT_TIMES; i++)
+    for (int i = 1; i <= ATTEMPT_TIMES; i++)
     {
         s.AttemptCount++;
         Logger.Log($"[WebRTC {i + 1}/{ATTEMPT_TIMES}] launch cookie={s.Cookie} config={config}");
@@ -511,6 +511,7 @@ _ = Task.Run(async () =>
             {
                 if (s.AttemptCount >= ATTEMPT_TIMES)
                 {
+                    Console.WriteLine($"Cleaning up idle WebRTC session: cookie {s.cookie} Attempt count {s.AttemptCount}");
                     Logger.Log($"WebRTC done: cookie={s.Cookie} attempts={s.AttemptCount}; killing");
                     try { if (!s.AppProcess.HasExited) s.AppProcess.Kill(); } catch { }
                     try { if (s.WebsockifyProcess != null && !s.WebsockifyProcess.HasExited) s.WebsockifyProcess.Kill(); } catch { }
