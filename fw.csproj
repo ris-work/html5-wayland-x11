@@ -1,52 +1,58 @@
+<?xml version="1.0"?>
 <Project Sdk="Microsoft.NET.Sdk.Web">
-
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <InvariantGlobalization>true</InvariantGlobalization>
     <PublishAot>true</PublishAot>
-      <PublishAotCompressed>true</PublishAotCompressed>
-  <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
-  <OptimizationPreference>Size</OptimizationPreference>
-  <EnableRequestDelegateGenerator>true</EnableRequestDelegateGenerator>
+    <PublishAotCompressed>true</PublishAotCompressed>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <OptimizationPreference>Size</OptimizationPreference>
+    <EnableRequestDelegateGenerator>true</EnableRequestDelegateGenerator>
+    <SelfContained>true</SelfContained>
+    <!-- Single-file and trimming -->
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimmerDefaultAction>link</TrimmerDefaultAction>
+    <!-- Size-first AOT settings -->
+    <IlcOptimizationPreference>Size</IlcOptimizationPreference>
+    <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
+    <!-- Strip out debug and runtime cruft -->
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
+    <!-- Optional: force invariant globalization for smaller footprint -->
+    <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
-
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0-preview.4.25258.110" />
-    <PackageReference Include="Tomlyn" Version="0.19.0" />
-    <PackageReference Include="Wiry.Base32.Patched" Version="1.0.6.1" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0-preview.4.25258.110"/>
+    <PackageReference Include="Tomlyn" Version="0.19.0"/>
+    <PackageReference Include="Wiry.Base32.Patched" Version="1.0.6.1"/>
   </ItemGroup>
-
   <PropertyGroup>
-  <!-- Enable single file publishing and self-contained NativeAOT build -->
-  <PublishSingleFile>true</PublishSingleFile>
-  <SelfContained>true</SelfContained>
-  <!-- Include a runtime identifier appropriate for your target -->
-  <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
-  <!-- Optionally, if you want all content files to be embedded and later self-extracted, set: -->
-  <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
-  <EnableDefaultContentItems>false</EnableDefaultContentItems>
-  <EnableRequestDelegateGenerator>true</EnableRequestDelegateGenerator>
-</PropertyGroup>
-
-<ItemGroup>
-  <!-- Include all files under static/ in the publish output -->
-  <Content Include="static\**\*">
-    <!-- Ensures the files are copied on build and available after publish -->
-	  <CopyToPublishDirectory>Never</CopyToPublishDirectory>
-    <!-- For single-file publish, setting this false means the file is embedded
+    <!-- Enable single file publishing and self-contained NativeAOT build -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <!-- Include a runtime identifier appropriate for your target -->
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+    <!-- Optionally, if you want all content files to be embedded and later self-extracted, set: -->
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <EnableDefaultContentItems>false</EnableDefaultContentItems>
+    <EnableRequestDelegateGenerator>true</EnableRequestDelegateGenerator>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Include all files under static/ in the publish output -->
+    <Content Include="static\**\*">
+      <!-- Ensures the files are copied on build and available after publish -->
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+      <!-- For single-file publish, setting this false means the file is embedded
          (and then extracted at runtime) rather than placed alongside the exe -->
-    <ExcludeFromSingleFile>false</ExcludeFromSingleFile>
-  </Content>
-</ItemGroup>
-
-<ItemGroup>
-  <EmbeddedResource Include="static\**\*">
-    <LogicalName>static/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
-  </EmbeddedResource>
-</ItemGroup>
-
-
-  
+      <ExcludeFromSingleFile>false</ExcludeFromSingleFile>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="static\**\*">
+      <LogicalName>static/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
 </Project>
