@@ -1,5 +1,5 @@
 ## What is this for? 
-To run your desktop apps through the browser. Securely, in a Kiosk mode. It is useful for:
+To run your desktop apps through the browser. Securely, in a Kiosk mode. It is useful for: 
  - demos  
  - control interfaces  
  - transient terminals  
