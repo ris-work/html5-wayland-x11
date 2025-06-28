@@ -26,7 +26,7 @@ using System.Data;
 
 const int KILL_WAIT = 150;
 const string WEBRTC_PROCESS_NAME = "t-a-c";
-const int ATTEMPT_TIMES = 3;
+const int ATTEMPT_TIMES = 30;
 string defaultApp = "xpaint"; // why: default safe app
 string[] approvedCommands = new string[] { "xeyes", "xclock", "scalc", "vkcube", "glxgears", "xgc", "oclock", "ico", "xcalc" }; // why: restrict allowed commands
 List<ActiveSessions> sessions = new();

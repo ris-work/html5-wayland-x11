@@ -1,17 +1,25 @@
 ## What is this for? 
-To run your desktop apps through the browser. Securely, in a Kiosk mode. It is useful for:
+To run your desktop apps through the browser. Securely, in a Kiosk mode. It is useful for:  
  - demos  
  - control interfaces  
  - transient terminals  
  - emergency/backup access to an app  
  - remote access in general  
 
+| Branch    | Description                          | Fossil link                          | GitHub link                  |
+|-----------|--------------------------------------|--------------------------------------|------------------------------|
+| x11-rtc   | WebRTC-enabled X11 VNC + WebSockets | [Fossil](?cmd=redirect&branch=x11-rtc)  | [GitHub](../tree/x11-rtc)   |
+| sway-rtc  | WebRTC-enabled sway VNC + WebSockets| [Fossil](?cmd=redirect&branch=sway-rtc) | [GitHub](../tree/sway-rtc)  |
+| x11       | WebSockets X11 VNC                   | [Fossil](?cmd=redirect&branch=x11)      | [GitHub](../tree/x11)       |
+| sway      | WebSockets sway VNC                  | [Fossil](?cmd=redirect&branch=sway)     | [GitHub](../tree/sway)      |
+
+
 ## What is this?
 This is a program that is terse and can be used to automatically setup and teardown and manage X11 and sway (Wayland) sessions through noVNC. This, in effect, allows you to run specific comamnds and display them in your browser. 
 In the `uds` branch, there is a config file for `ctwm` that disables all menus and gives typical Microsoft Windows (R)-like behaviour.   
 The -rtc branches add WebRTC and screen recording. 
 
-Environment variables:  
+#### Environment variables:   
 ```
 export RESOLUTION_WIDTH=1024
 export RESOLUTION_HEIGHT=768
@@ -57,6 +65,19 @@ You need to have the `duplicator` executable in PATH.
 
 ### TLS/SSL
 Ideally usable from an Apache Web Server reverse HTTPS proxy.
+
+#### Apache2 config
+##### if `BASE_PATH="/demo_x11/" ASPNETCORE_URLS="http://127.0.0.1:5506/"`
+```
+    RewriteEngine On 
+    RewriteCond %{HTTP:Upgrade} =websocket [NC] 
+    RewriteRule ^/demo_x11/(.*)$ ws://127.0.0.1:5506/$1 [P,L] 
+
+    # Proxy all other HTTP requests under /demo. 
+    ProxyPass /demo_x11 http://127.0.0.1:5506 
+    ProxyPassReverse /demo_x11 http://127.0.0.1:5506 
+
+```
 
 ### Things that have been tested 
  - `xeyes` (and others)  
