@@ -17,8 +17,8 @@ To run your desktop apps through the browser. Securely, in a Kiosk mode. It is u
 ## What is this?
 This is a program that is terse and can be used to automatically setup and teardown and manage X11 sessions through noVNC. This, in effect, allows you to run specific comamnds and display them in your browser. 
 In the `uds` branch, there is a config file for `ctwm` that disables all menus and gives typical Microsoft Windows (R)-like behaviour.   
-Environment variables:  
-```
+#### Environment variables:  
+``` 
 export RESOLUTION_WIDTH=1024 
 export RESOLUTION_HEIGHT=768 
 export DEFAULT_PROGRAM_NAME=xeyes 
@@ -28,7 +28,7 @@ export ANSWERER_TURN_CREDENTIAL=xxxx
 #export WEBSOCKIFY=websockify-rs (Apache/MIT like licensed over websockify's LGPL) 
 #BASE_PATH for reverse subdirectory proxies 
 export BASE_PATH="/" 
-```
+``` 
 
 ## Requiremets
 #### For all  
