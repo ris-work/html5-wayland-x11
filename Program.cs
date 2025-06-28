@@ -590,16 +590,20 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
     if (!await WaitForFileCreationAsync($"{RTSock}"))
         Logger.Log($"Warning: Wayland server on port {RTSock} did not open");
     await Task.Delay(1000);
-    var wayVncLauncher = new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"wayvnc -v -C /dev/null --unix-socket {USock}\" 2>&1 >{RTSock}.log") { UseShellExecute = false };
+    //var wayVncLauncher = new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"wayvnc -v -C /dev/null --unix-socket {USock}\" 2>&1 >{RTSock}.log") { UseShellExecute = false };
+    var wayVncLauncherCommand = "swaymsg";
+    var wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"while :; rm -f {USock}; do wayvnc -v -C /dev/null --unix-socket {USock} >{RTSock}.log 2>&1; echo Restarting: wayvnc {RTSock}@{USock}; rm {USock}; [ -S \\\"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\\\" ] && echo Sway still alive || break; sleep 0.2; done\\\"\"";
+    Console.WriteLine($"wayvnc: {wayVncLauncherCommand} {wayVncLauncherArgs}");
+    Console.WriteLine($"RECORD_SCREEN: {RECORD_SCREEN}");
     //wayVncLauncher.Environment["SWAYSOCK"] = $"{RTSock}";
     //Console.WriteLine($"{swayPsi.Environment["SWAYSOCK"]}");
     //wayVncLauncher.Environment["XDG_RUNTIME_DIR"] = $"{RTDir}";
-    wayVncLauncher.Environment["WLR_BACKENDS"] = "headless";
+    //wayVncLauncher.Environment["WLR_BACKENDS"] = "headless";
     //wayVncLauncher.Environment["WLR_RENDERER"] = "pixman";
-    wayVncLauncher.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
+    //wayVncLauncher.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
     //wayVncLauncher.Environment["WAYLAND_DISPLAY"] = $"{WLSock}";
-    Console.WriteLine($"Starting wayvnc: {wayVncLauncher.FileName} {wayVncLauncher.Arguments}");
-    Process.Start(wayVncLauncher);
+    //Console.WriteLine($"Starting wayvnc: {wayVncLauncher.FileName} {wayVncLauncher.Arguments}");
+    //Process.Start(wayVncLauncher);
     Console.WriteLine("Started wayvnc");
     Process? Duplicator = null;
     if (RECORD_SCREEN)
@@ -614,6 +618,17 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
         UseShellExecute = false,
     })!;
     await Task.Delay(50);
+    var s = new ActiveSessions
+    {
+        Display = display,
+        Cookie = cookie,
+        LastActive = DateTime.UtcNow,
+        VncProcess = vnc,
+        AppProcess = appProc,
+        VncPort = vncPort,
+        WebsockifyPort = wsPort
+    };
+    _ = SpawnVNCChildProcess(s, wayVncLauncherCommand, wayVncLauncherArgs, cleanup);
     Process wsProc;
     if (WEBSOCKIFY == "websockify-rs")
     {
@@ -624,17 +639,8 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
         wsProc = Process.Start(new ProcessStartInfo("websockify", $"--unix-listen=ws-{wsPort} --unix-target={ShouldConnectToUSock}") { UseShellExecute = false })!;
     }
     Logger.Log($"Session started: cookie={cookie}, d:{display}, vnc(pid={vnc.Id}@{ShouldConnectToUSock}), {procName}(pid={appProc.Id}), ws(pid={wsProc.Id}@{wsPort})");
-    return new ActiveSessions
-    {
-        Display = display,
-        Cookie = cookie,
-        LastActive = DateTime.UtcNow,
-        VncProcess = vnc,
-        WebsockifyProcess = wsProc,
-        AppProcess = appProc,
-        VncPort = vncPort,
-        WebsockifyPort = wsPort
-    };
+    s.WebsockifyProcess = wsProc;
+    return s;
 }
 void UpdateSession(string cookie)
 {
