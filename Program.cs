@@ -421,7 +421,6 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     {
         UseShellExecute = false,
     };
-    //swayPsi.Environment["SWAYSOCK"] = $"{Path.Combine(Directory.GetCurrentDirectory(),"wl-")}{display}.swaysock";
     swayPsi.Environment["SWAYSOCK"] = $"{RTSock}";
     Console.WriteLine($"{swayPsi.Environment["SWAYSOCK"]}");
     swayPsi.Environment["XDG_RUNTIME_DIR"] = $"{RTDir}";
@@ -439,8 +438,6 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     await Task.Delay(1000);
     var wayVncLauncherCommand = "swaymsg";
     var wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"while :; rm -f {USock}; do wayvnc -v -C /dev/null --unix-socket {USock} >{RTSock}.log 2>&1; echo Restarting: wayvnc {RTSock}@{USock}; rm {USock}; [ -S \\\"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\\\" ] && echo Sway still alive || break; sleep 0.2; done\\\"\"";
-    //wayVncLauncher.Environment["WLR_BACKENDS"] = "headless";
-    //wayVncLauncher.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
     Console.WriteLine($"wayvnc: {wayVncLauncherCommand} {wayVncLauncherArgs}");
     Console.WriteLine($"RECORD_SCREEN: {RECORD_SCREEN}");
     await Task.Delay(100);
@@ -547,7 +544,6 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
         Console.WriteLine($"Duplicator: listen: {ShouldConnectToUSock} to: {USock}");
         if (!await WaitForFileCreationAsync($"{USock}"))
             Logger.Log($"Warning: vnc server on port {ShouldConnectToUSock} did not open");
-        //Duplicator = Process.Start("duplicator", $"{ShouldConnectToUSock} {USock} screendump");
     }
     _ = SpawnWebRTCChildProcess(s, $"webrtc-config-{vncPort}.toml", cleanup);
     s.Duplicator = Duplicator;
@@ -574,7 +570,6 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
     {
         UseShellExecute = false,
     };
-    //swayPsi.Environment["SWAYSOCK"] = $"{Path.Combine(Directory.GetCurrentDirectory(),"wl-")}{display}.swaysock";
     swayPsi.Environment["SWAYSOCK"] = $"{RTSock}";
     Console.WriteLine($"{cookie}'s SWAYSOCK: {swayPsi.Environment["SWAYSOCK"]}");
     swayPsi.Environment["XDG_RUNTIME_DIR"] = $"{RTDir}";
@@ -590,20 +585,10 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
     if (!await WaitForFileCreationAsync($"{RTSock}"))
         Logger.Log($"Warning: Wayland server on port {RTSock} did not open");
     await Task.Delay(1000);
-    //var wayVncLauncher = new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"wayvnc -v -C /dev/null --unix-socket {USock}\" 2>&1 >{RTSock}.log") { UseShellExecute = false };
     var wayVncLauncherCommand = "swaymsg";
     var wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"while :; rm -f {USock}; do wayvnc -v -C /dev/null --unix-socket {USock} >{RTSock}.log 2>&1; echo Restarting: wayvnc {RTSock}@{USock}; rm {USock}; [ -S \\\"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\\\" ] && echo Sway still alive || break; sleep 0.2; done\\\"\"";
     Console.WriteLine($"wayvnc: {wayVncLauncherCommand} {wayVncLauncherArgs}");
     Console.WriteLine($"RECORD_SCREEN: {RECORD_SCREEN}");
-    //wayVncLauncher.Environment["SWAYSOCK"] = $"{RTSock}";
-    //Console.WriteLine($"{swayPsi.Environment["SWAYSOCK"]}");
-    //wayVncLauncher.Environment["XDG_RUNTIME_DIR"] = $"{RTDir}";
-    //wayVncLauncher.Environment["WLR_BACKENDS"] = "headless";
-    //wayVncLauncher.Environment["WLR_RENDERER"] = "pixman";
-    //wayVncLauncher.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
-    //wayVncLauncher.Environment["WAYLAND_DISPLAY"] = $"{WLSock}";
-    //Console.WriteLine($"Starting wayvnc: {wayVncLauncher.FileName} {wayVncLauncher.Arguments}");
-    //Process.Start(wayVncLauncher);
     Console.WriteLine("Started wayvnc");
     Process? Duplicator = null;
     if (RECORD_SCREEN)
