@@ -15,20 +15,39 @@ To run your desktop apps through the browser. Securely, in a Kiosk mode. It is u
 
 
 ## What is this?
-This is a program that is terse and can be used to automatically setup and teardown and manage X11 sessions through noVNC. This, in effect, allows you to run specific comamnds and display them in your browser. 
+This is a program that is terse and can be used to automatically setup and teardown and manage X11 and sway (Wayland) sessions through noVNC. This, in effect, allows you to run specific comamnds and display them in your browser. 
 In the `uds` branch, there is a config file for `ctwm` that disables all menus and gives typical Microsoft Windows (R)-like behaviour.   
-#### Environment variables:  
-``` 
-export RESOLUTION_WIDTH=1024 
-export RESOLUTION_HEIGHT=768 
-export DEFAULT_PROGRAM_NAME=xeyes 
-export ANSWERER_TURN_SERVER=turn:xxxx
-export ANSWERER_TURN_USERNAME=xxxx
-export ANSWERER_TURN_CREDENTIAL=xxxx
-#export WEBSOCKIFY=websockify-rs (Apache/MIT like licensed over websockify's LGPL) 
-#BASE_PATH for reverse subdirectory proxies 
-export BASE_PATH="/" 
-``` 
+The -rtc branches add WebRTC and screen recording. 
+
+#### Environment variables:   
+```
+export RESOLUTION_WIDTH=1024
+export RESOLUTION_HEIGHT=768
+export DEFAULT_PROGRAM_NAME=xeyes
+#export WEBSOCKIFY=websockify-rs (Apache/MIT like licensed over websockify's LGPL)
+#BASE_PATH for reverse subdirectory proxies
+export BASE_PATH="/"
+export RECORD_SCREEN=false #Needs duplicator executable, dumps RFB session TCP streams to file in a directory. Useful for audits. c2x: client to server, s2c: server to client 
+#To use TURN (never sent to the client, the server uses it for itself) 
+export ANSWERER_TURN_USERNAME=xxxx 
+export ANSWERER_TURN_CREDENTIAL=xxxx 
+export ANSWERER_TURN_SERVER=turn:xxxx.xxxx.com 
+```
+
+## Usage 
+```
+?WebRTC=true <== ENABLE WEBRTC, otherwise use WebSockets 
+```
+##### Sway 
+Ctrl+Drag to move windows 
+Usually does not render text (should not have any text rendering dependencies) 
+
+##### WebRTC 
+For using it, you have to also have t-a-c executable in PATH (can be found in the uv section of the fossil repo) 
+
+##### Recordings 
+They are dumped to a directory, c2s -> client-to-server, s2c -> server-to-client 
+You need to have the `duplicator` executable in PATH. 
 
 ## Requiremets
 #### For all  
@@ -48,7 +67,7 @@ export BASE_PATH="/"
 Ideally usable from an Apache Web Server reverse HTTPS proxy.
 
 #### Apache2 config
-##### if `BASE_PATH="/demo_x11/"`
+##### if `BASE_PATH="/demo_x11/" ASPNETCORE_URLS="http://127.0.0.1:5506/"`
 ```
     RewriteEngine On 
     RewriteCond %{HTTP:Upgrade} =websocket [NC] 
@@ -73,6 +92,18 @@ The `trunk` branch has the code for pure TCP. Use it if you don't have the lates
 
 ### Running
 `dotnet run` 
+
+#### Original Fossil Repo(s) 
+[this](https://vz.al/repos/fw/home)   
+[unversioned binaries (uv)](https://vz.al/repos/fw/uv) 
+
+###### Duplicator 
+https://vz.al/repos/duplicator/home    
+[unversioned binaries (uv)](https://vz.al/repos/duplicator/uv) 
+
+###### WebRTC Forwarding Utilities 
+https://vz.al/repos/webrtc-udp-tcp-forwarder/home    
+[unversioned binaries (uv)](https://vz.al/repos/webrtc-udp-tcp-forwarder/uv) 
 
 ### License
 Copyright (C) 2025 Rishikeshan Sulochana/Lavakumar 
