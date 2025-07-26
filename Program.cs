@@ -61,6 +61,53 @@ if (string.IsNullOrEmpty(WEBSOCKIFY))
 {
     WEBSOCKIFY = "websockify";
 }
+if (WEBSOCKIFY == "wscs")
+{
+    System.Diagnostics.Process.Start("wscs", "--unix-listen=dummy.listen --unix-target=dummy.target --source-type=ws --no-daemonize");
+}
+bool NO_KIOSK = false;
+string? CONNECT_EP = null;
+if (Environment.GetEnvironmentVariable("NO_KIOSK")?.ToLowerInvariant() == "true") NO_KIOSK = true;
+bool CONNECT_EP_TCP = false;
+if (Environment.GetEnvironmentVariable("CONNECT_ENDPOINT_TCP")?.ToLowerInvariant() == "true") CONNECT_EP_TCP = true;
+if (NO_KIOSK)
+{
+    CONNECT_EP = Environment.GetEnvironmentVariable("CONNECT_ENDPOINT");
+    if (CONNECT_EP == null)
+    {
+        System.Console.WriteLine("NO_KIOSK but CONNECT_ENDPOINT not specified.");
+    }
+    if (CONNECT_EP_TCP == false)
+    {
+        System.Console.WriteLine("NO_KIOSK but CONNECT_ENDPOINT_TCP is FALSE, other modes not supported, expect silent failures.");
+    }
+}
+Console.WriteLine($"websockify: {WEBSOCKIFY}");
+// parse “host:port” or “[host]:port”
+(string host, int port) ParseEP(string s)
+{
+    if (s[0] == '[')
+    {
+        var i = s.IndexOf(']');
+        return (s[1..i], int.Parse(s[(i + 2)..]));
+    }
+    var i2 = s.LastIndexOf(':');
+    return (s[..i2], int.Parse(s[(i2 + 1)..]));
+}
+
+// format back as “addr:port” (v4) or “[addr]:port” (v6)
+string FormatEP(string host, int port)
+    => host.Contains(':')
+      ? $"[{host}]:{port}"
+      : $"{host}:{port}";
+(string host, int port) ConnectEP = ("", 0);
+string? TCP_CONNECT_STRING = null;
+if (CONNECT_EP != null && CONNECT_EP_TCP)
+{
+    ConnectEP = ParseEP(CONNECT_EP);
+    Logger.Log($"Connect to Endpoint: {FormatEP(ConnectEP.host, ConnectEP.port)}");
+    TCP_CONNECT_STRING = FormatEP(ConnectEP.host, ConnectEP.port);
+}
 string BASE_PATH = Environment.GetEnvironmentVariable("BASE_PATH");
 if (string.IsNullOrEmpty(BASE_PATH))
 {
@@ -129,9 +176,13 @@ string _2kSwayConfig =
     + "bindsym button2 [floating_modifier] scratchpad show\n";
 
 
-File.WriteAllText("empty_x_startup", "#!/bin/sh\nexec tail -f /dev/null");
-File.WriteAllText("empty_sway_startup", $"output * resolution {W}x{H} bg #008080 solid_color\n{_2kSwayConfig}");
-File.SetUnixFileMode("empty_x_startup", File.GetUnixFileMode("empty_x_startup") | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
+try
+{
+    File.WriteAllText("empty_x_startup", "#!/bin/sh\nexec tail -f /dev/null");
+    File.WriteAllText("empty_sway_startup", $"output * resolution {W}x{H} bg #008080 solid_color\n{_2kSwayConfig}");
+    File.SetUnixFileMode("empty_x_startup", File.GetUnixFileMode("empty_x_startup") | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
+}
+catch (Exception E) { }
 
 static void ExtractAllStaticResources(string destFolder)
 {
@@ -407,7 +458,18 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
                                   Action<ActiveSessions> cleanup)
 {
     int vncPort = GetFreePort(), display = new Random().Next(1, 100);
-    var USock = $"{Path.Combine(Directory.GetCurrentDirectory(), "unix-")}{vncPort}";
+    Process? vnc = null, appProc = null;
+    //var USock = $"{Path.Combine(Directory.GetCurrentDirectory(), "unix-")}{vncPort}";
+    string USock;
+    if (!NO_KIOSK)
+    {
+        USock = $"{Path.Combine(Directory.GetCurrentDirectory(), "unix-")}{vncPort}";
+        USock = $"unix-{vncPort}";
+    }
+    else
+    {
+        USock = $"{Path.Combine(Directory.GetCurrentDirectory(), CONNECT_EP)}";
+    }
     var ShouldConnectToUSock = USock;
     string RTDir = $"{Path.Combine(Directory.GetCurrentDirectory(), "wl-")}{display}";
     string RTSock = $"{RTDir}.swaysock";
@@ -417,38 +479,46 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     try { File.Delete(RTSock); } catch { }
     try { Directory.Delete(RTDir, true); } catch { }
     if (RECORD_SCREEN) USock = $"{USock}.orig";
-    var swayPsi = new ProcessStartInfo("sway", $"-c empty_sway_startup")
+    string wayVncLauncherCommand = "";
+    string wayVncLauncherArgs = "";
+    if (!NO_KIOSK)
     {
-        UseShellExecute = false,
-    };
-    swayPsi.Environment["SWAYSOCK"] = $"{RTSock}";
-    Console.WriteLine($"{swayPsi.Environment["SWAYSOCK"]}");
-    swayPsi.Environment["XDG_RUNTIME_DIR"] = $"{RTDir}";
-    swayPsi.Environment["WLR_BACKENDS"] = "headless";
-    swayPsi.Environment["WLR_RENDERER"] = "pixman";
-    swayPsi.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
-    swayPsi.Environment["MESA_LOADER_DEIVER_OVERRIDE"] = "llvmpipe";
-    try { Directory.CreateDirectory($"{RTDir}"); } catch { }
+        var swayPsi = new ProcessStartInfo("sway", $"-c empty_sway_startup")
+        {
+            UseShellExecute = false,
+        };
+        swayPsi.Environment["SWAYSOCK"] = $"{RTSock}";
+        Console.WriteLine($"{swayPsi.Environment["SWAYSOCK"]}");
+        swayPsi.Environment["XDG_RUNTIME_DIR"] = $"{RTDir}";
+        swayPsi.Environment["WLR_BACKENDS"] = "headless";
+        swayPsi.Environment["WLR_RENDERER"] = "pixman";
+        swayPsi.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
+        swayPsi.Environment["MESA_LOADER_DEIVER_OVERRIDE"] = "llvmpipe";
+        try { Directory.CreateDirectory($"{RTDir}"); } catch { }
     ;
-    var vnc = Process.Start(swayPsi)!;
-    // One-liner swaymsg commands:
-    // Launch wayvnc with its UNIX socket set to "unix-{vncPort}.vncsock".
-    if (!WaitForUnixSocketOpen($"{RTSock}"))
-        Logger.Log($"Warning: Wayland server on port {RTSock} did not open");
-    await Task.Delay(1000);
-    var wayVncLauncherCommand = "swaymsg";
-    var wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"while :; rm -f {USock}; do wayvnc -v -C /dev/null --unix-socket {USock} >{RTSock}.log 2>&1; echo Restarting: wayvnc {RTSock}@{USock}; rm {USock}; [ -S \\\"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\\\" ] && echo Sway still alive || break; sleep 0.2; done\\\"\"";
-    Console.WriteLine($"wayvnc: {wayVncLauncherCommand} {wayVncLauncherArgs}");
+        vnc = Process.Start(swayPsi)!;
+        // One-liner swaymsg commands:
+        // Launch wayvnc with its UNIX socket set to "unix-{vncPort}.vncsock".
+        if (!WaitForUnixSocketOpen($"{RTSock}"))
+            Logger.Log($"Warning: Wayland server on port {RTSock} did not open");
+        await Task.Delay(1000);
+        wayVncLauncherCommand = "swaymsg";
+        wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"while :; rm -f {USock}; do wayvnc -v -C /dev/null --unix-socket {USock} >{RTSock}.log 2>&1; echo Restarting: wayvnc {RTSock}@{USock}; rm {USock}; [ -S \\\"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\\\" ] && echo Sway still alive || break; sleep 0.2; done\\\"\"";
+        Console.WriteLine($"wayvnc: {wayVncLauncherCommand} {wayVncLauncherArgs}");
+    }
     Console.WriteLine($"RECORD_SCREEN: {RECORD_SCREEN}");
     await Task.Delay(100);
     if (!await WaitForFileCreationAsync($"{USock}"))
         Logger.Log($"Warning: vnc server on port {USock} did not open");
-    var appProc = Process.Start(new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"{procName}\"")
+    if (!NO_KIOSK)
     {
-        UseShellExecute = false,
-    })!;
+        appProc = Process.Start(new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"{procName}\"")
+        {
+            UseShellExecute = false,
+        })!;
+    }
     await Task.Delay(50);
-    Logger.Log($"Session started: cookie={cookie}, d:{display}, vnc(pid={vnc.Id}@unix-{vncPort}), {procName}(pid={appProc.Id})");
+    Logger.Log($"Session started: cookie={cookie}, d:{display}, vnc(pid={vnc?.Id}@unix-{vncPort}), {procName}(pid={appProc?.Id})");
 
     byte[] peerPSK = new byte[40];
     byte[] randomUsernameBytes = new byte[20];
@@ -472,27 +542,27 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     /* Generate WebRTC Forwarder TOML configuration */
     var OffererToml = Toml.FromModel((new ForwarderConfigOut()
     {
-        Address = $"{ShouldConnectToUSock}",
+        Address = CONNECT_EP_TCP ? ConnectEP.host : $"{ShouldConnectToUSock}",
         PublishAuthUser = randomUsername,
         PublishAuthPass = randomPassword,
         PeerPSK = randomPeerPSK,
         PublishEndpoint = $"wss://vz.al/anonwsmul/{randomSessionName}/wso",
-        Port = $"{ShouldConnectToUSock}",
+        Port = CONNECT_EP_TCP ? $"{ConnectEP.port}" : $"{ShouldConnectToUSock}",
         PublishAuthType = "Basic",
-        Type = "UDS",
+        Type = CONNECT_EP_TCP ? "TCP" : "UDS",
         WebRTCMode = "Offer",
     }).ToTomlTable());
     // build base table
     var atbl = new ForwarderConfigOut
     {
-        Address = $"{ShouldConnectToUSock}",
+        Address = CONNECT_EP_TCP ? ConnectEP.host : $"{ShouldConnectToUSock}",
         PublishAuthUser = randomUsername,
         PublishAuthPass = randomPassword,
         PeerPSK = randomPeerPSK,
         PublishEndpoint = $"wss://vz.al/anonwsmul/{randomSessionName}/wsa",
-        Port = $"{ShouldConnectToUSock}",
+        Port = CONNECT_EP_TCP ? $"{ConnectEP.port}" : $"{ShouldConnectToUSock}",
         PublishAuthType = "Basic",
-        Type = "UDS",
+        Type = CONNECT_EP_TCP ? "TCP" : "UDS",
         WebRTCMode = "Accept",
     }.ToTomlTable();
 
@@ -513,7 +583,7 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     var theirForwarderToml = OffererToml;
     configOurs = AnswererToml;
     string configTheirs = OffererToml;
-    Logger.Log($"Session started WebRTC: cookie={cookie}, display={display}, vnc(pid={vnc.Id}), app(pid={appProc.Id}), config={configOurs}, configTheirs={configTheirs}");
+    Logger.Log($"Session started WebRTC: cookie={cookie}, display={display}, vnc(pid={vnc?.Id}), app(pid={appProc?.Id}), config={configOurs}, configTheirs={configTheirs}");
 
     var s = new ActiveSessions
     {
@@ -533,10 +603,13 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     };
     File.WriteAllText($"webrtc-config-{vncPort}.toml", configOurs);
 
-    _ = SpawnVNCChildProcess(s, wayVncLauncherCommand, wayVncLauncherArgs, cleanup);
-    Logger.Log("Spawned VNC child");
-    if (!await WaitForFileCreationAsync($"{USock}"))
-        Logger.Log($"Warning: vnc server on port {USock} did not open");
+    if (!NO_KIOSK)
+    {
+        _ = SpawnVNCChildProcess(s, wayVncLauncherCommand, wayVncLauncherArgs, cleanup);
+        Logger.Log("Spawned VNC child");
+        if (!await WaitForFileCreationAsync($"{USock}"))
+            Logger.Log($"Warning: vnc server on port {USock} did not open");
+    }
     Process? Duplicator = null;
     if (RECORD_SCREEN)
     {
@@ -556,40 +629,46 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
 async Task<ActiveSessions> StartSession(string cookie, string procName)
 {
     int vncPort = GetFreePort(), wsPort = GetFreePort(), display = new Random().Next(1, 100);
+    Process? vnc = null;
     var USock = $"{Path.Combine(Directory.GetCurrentDirectory(), "unix-")}{vncPort}";
     var ShouldConnectToUSock = USock;
     if (RECORD_SCREEN) USock = $"{USock}.orig";
     string RTDir = $"{Path.Combine(Directory.GetCurrentDirectory(), "wl-")}{display}";
     string RTSock = $"{RTDir}.swaysock";
     string WLSock = $"{RTDir}.wlsock";
+    string wayVncLauncherCommand = "";
+    string wayVncLauncherArgs = "";
     try { File.Delete(USock); } catch { }
     try { File.Delete(ShouldConnectToUSock); } catch { }
-    try { File.Delete(RTSock); } catch { }
-    try { Directory.Delete(RTDir, true); } catch { }
-    var swayPsi = new ProcessStartInfo("sway", $"-c empty_sway_startup")
+    if (!NO_KIOSK)
     {
-        UseShellExecute = false,
-    };
-    swayPsi.Environment["SWAYSOCK"] = $"{RTSock}";
-    Console.WriteLine($"{cookie}'s SWAYSOCK: {swayPsi.Environment["SWAYSOCK"]}");
-    swayPsi.Environment["XDG_RUNTIME_DIR"] = $"{RTDir}";
-    swayPsi.Environment["WLR_BACKENDS"] = "headless";
-    swayPsi.Environment["WLR_RENDERER"] = "pixman";
-    swayPsi.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
-    swayPsi.Environment["MESA_LOADER_DEIVER_OVERRIDE"] = "llvmpipe";
-    try { Directory.CreateDirectory($"{RTDir}"); } catch { }
+        try { File.Delete(RTSock); } catch { }
+        try { Directory.Delete(RTDir, true); } catch { }
+        var swayPsi = new ProcessStartInfo("sway", $"-c empty_sway_startup")
+        {
+            UseShellExecute = false,
+        };
+        swayPsi.Environment["SWAYSOCK"] = $"{RTSock}";
+        Console.WriteLine($"{cookie}'s SWAYSOCK: {swayPsi.Environment["SWAYSOCK"]}");
+        swayPsi.Environment["XDG_RUNTIME_DIR"] = $"{RTDir}";
+        swayPsi.Environment["WLR_BACKENDS"] = "headless";
+        swayPsi.Environment["WLR_RENDERER"] = "pixman";
+        swayPsi.Environment["LIBGL_ALWAYS_SOFTWARE"] = "1";
+        swayPsi.Environment["MESA_LOADER_DEIVER_OVERRIDE"] = "llvmpipe";
+        try { Directory.CreateDirectory($"{RTDir}"); } catch { }
     ;
-    var vnc = Process.Start(swayPsi)!;
-    // One-liner swaymsg commands:
-    // Launch wayvnc with its UNIX socket set to "unix-{vncPort}.vncsock".
-    if (!await WaitForFileCreationAsync($"{RTSock}"))
-        Logger.Log($"Warning: Wayland server on port {RTSock} did not open");
-    await Task.Delay(1000);
-    var wayVncLauncherCommand = "swaymsg";
-    var wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"while :; rm -f {USock}; do wayvnc -v -C /dev/null --unix-socket {USock} >{RTSock}.log 2>&1; echo Restarting: wayvnc {RTSock}@{USock}; rm {USock}; [ -S \\\"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\\\" ] && echo Sway still alive || break; sleep 0.2; done\\\"\"";
-    Console.WriteLine($"wayvnc: {wayVncLauncherCommand} {wayVncLauncherArgs}");
-    Console.WriteLine($"RECORD_SCREEN: {RECORD_SCREEN}");
-    Console.WriteLine("Started wayvnc");
+        vnc = Process.Start(swayPsi)!;
+        // One-liner swaymsg commands:
+        // Launch wayvnc with its UNIX socket set to "unix-{vncPort}.vncsock".
+        if (!await WaitForFileCreationAsync($"{RTSock}"))
+            Logger.Log($"Warning: Wayland server on port {RTSock} did not open");
+        await Task.Delay(1000);
+        wayVncLauncherCommand = "swaymsg";
+        wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"while :; rm -f {USock}; do wayvnc -v -C /dev/null --unix-socket {USock} >{RTSock}.log 2>&1; echo Restarting: wayvnc {RTSock}@{USock}; rm {USock}; [ -S \\\"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\\\" ] && echo Sway still alive || break; sleep 0.2; done\\\"\"";
+        Console.WriteLine($"wayvnc: {wayVncLauncherCommand} {wayVncLauncherArgs}");
+        Console.WriteLine($"RECORD_SCREEN: {RECORD_SCREEN}");
+        Console.WriteLine("Started wayvnc");
+    }
     Process? Duplicator = null;
     if (RECORD_SCREEN)
     {
@@ -613,17 +692,44 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
         VncPort = vncPort,
         WebsockifyPort = wsPort
     };
-    _ = SpawnVNCChildProcess(s, wayVncLauncherCommand, wayVncLauncherArgs, cleanup);
-    Process wsProc;
-    if (WEBSOCKIFY == "websockify-rs")
+    if (!NO_KIOSK)
     {
-        wsProc = Process.Start(new ProcessStartInfo("websockify-rs", $"{ShouldConnectToUSock} ws-{wsPort} --listen-unix --upstream-unix") { UseShellExecute = false })!;
+        _ = SpawnVNCChildProcess(s, wayVncLauncherCommand, wayVncLauncherArgs, cleanup);
+    }
+    Process wsProc;
+    if (!CONNECT_EP_TCP)
+    {
+        if (WEBSOCKIFY == "websockify-rs")
+        {
+            wsProc = Process.Start(new ProcessStartInfo("websockify-rs", $"{ShouldConnectToUSock} ws-{wsPort} --listen-unix --upstream-unix") { UseShellExecute = false })!;
+        }
+        else if (WEBSOCKIFY == "wscs")
+        {
+            wsProc = Process.Start(new ProcessStartInfo("wscs", $"--unix-listen=ws-{wsPort} --unix-target={ShouldConnectToUSock} --source-type=ws") { UseShellExecute = false })!;
+            Logger.Log($"WSCS instance: {wsProc.StartInfo.FileName} {wsProc.StartInfo.Arguments}");
+        }
+        else
+        {
+            wsProc = Process.Start(new ProcessStartInfo("websockify", $"--unix-listen=ws-{wsPort} --unix-target={ShouldConnectToUSock}") { UseShellExecute = false })!;
+        }
     }
     else
     {
-        wsProc = Process.Start(new ProcessStartInfo("websockify", $"--unix-listen=ws-{wsPort} --unix-target={ShouldConnectToUSock}") { UseShellExecute = false })!;
+        if (WEBSOCKIFY == "websockify-rs")
+        {
+            wsProc = Process.Start(new ProcessStartInfo("websockify-rs", $"{TCP_CONNECT_STRING} ws-{wsPort} --listen-unix") { UseShellExecute = false })!;
+        }
+        else if (WEBSOCKIFY == "wscs")
+        {
+            wsProc = Process.Start(new ProcessStartInfo("wscs", $"--unix-listen=ws-{wsPort} --unix-target=tcp://{TCP_CONNECT_STRING} --source-type=ws") { UseShellExecute = false })!;
+            Logger.Log($"WSCS instance: {wsProc.StartInfo.FileName} {wsProc.StartInfo.Arguments}");
+        }
+        else
+        {
+            wsProc = Process.Start(new ProcessStartInfo("websockify", $"--unix-listen=ws-{wsPort} {TCP_CONNECT_STRING}") { UseShellExecute = false })!;
+        }
     }
-    Logger.Log($"Session started: cookie={cookie}, d:{display}, vnc(pid={vnc.Id}@{ShouldConnectToUSock}), {procName}(pid={appProc.Id}), ws(pid={wsProc.Id}@{wsPort})");
+    Logger.Log($"Session started: cookie={cookie}, d:{display}, vnc(pid={vnc?.Id}@unix-{vncPort}), {procName}(pid={appProc?.Id}), ws(pid={wsProc?.Id}@{wsPort})");
     s.WebsockifyProcess = wsProc;
     return s;
 }
