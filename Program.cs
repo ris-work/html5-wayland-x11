@@ -482,7 +482,7 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
     }
     else
     {
-        USock = $"{Path.Combine(Directory.GetCurrentDirectory(), "CONNECT_EP")}";
+        USock = $"{Path.Combine(Directory.GetCurrentDirectory(), CONNECT_EP)}";
     }
     var ShouldConnectToUSock = USock;
     if (RECORD_SCREEN) USock = $"{USock}.orig";
@@ -539,7 +539,7 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
             wsProc = Process.Start(new ProcessStartInfo("websockify", $"--unix-listen=ws-{wsPort} {TCP_CONNECT_STRING}") { UseShellExecute = false })!;
         }
     }
-    Logger.Log($"Session started: cookie={cookie}, d:{display}, vnc(pid={vnc.Id}@unix-{vncPort}), {procName}(pid={appProc.Id}), ws(pid={wsProc.Id}@{wsPort})");
+    Logger.Log($"Session started: cookie={cookie}, d:{display}, vnc(pid={vnc?.Id}@unix-{vncPort}), {procName}(pid={appProc?.Id}), ws(pid={wsProc?.Id}@{wsPort})");
     return new ActiveSessions
     {
         Cookie = cookie,
