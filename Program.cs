@@ -62,6 +62,53 @@ if (string.IsNullOrEmpty(WEBSOCKIFY))
 {
     WEBSOCKIFY = "websockify";
 }
+if (WEBSOCKIFY == "wscs")
+{
+    System.Diagnostics.Process.Start("wscs", "--unix-listen=dummy.listen --unix-target=dummy.target --source-type=ws --no-daemonize");
+}
+bool NO_KIOSK = false;
+string? CONNECT_EP = null;
+if (Environment.GetEnvironmentVariable("NO_KIOSK")?.ToLowerInvariant() == "true") NO_KIOSK = true;
+bool CONNECT_EP_TCP = false;
+if (Environment.GetEnvironmentVariable("CONNECT_ENDPOINT_TCP")?.ToLowerInvariant() == "true") CONNECT_EP_TCP = true;
+if (NO_KIOSK)
+{
+    CONNECT_EP = Environment.GetEnvironmentVariable("CONNECT_ENDPOINT");
+    if (CONNECT_EP == null)
+    {
+        System.Console.WriteLine("NO_KIOSK but CONNECT_ENDPOINT not specified.");
+    }
+    if (CONNECT_EP_TCP == false)
+    {
+        System.Console.WriteLine("NO_KIOSK but CONNECT_ENDPOINT_TCP is FALSE, other modes not supported, expect silent failures.");
+    }
+}
+Console.WriteLine($"websockify: {WEBSOCKIFY}");
+// parse “host:port” or “[host]:port”
+(string host, int port) ParseEP(string s)
+{
+    if (s[0] == '[')
+    {
+        var i = s.IndexOf(']');
+        return (s[1..i], int.Parse(s[(i + 2)..]));
+    }
+    var i2 = s.LastIndexOf(':');
+    return (s[..i2], int.Parse(s[(i2 + 1)..]));
+}
+
+// format back as “addr:port” (v4) or “[addr]:port” (v6)
+string FormatEP(string host, int port)
+    => host.Contains(':')
+      ? $"[{host}]:{port}"
+      : $"{host}:{port}";
+(string host, int port) ConnectEP;
+string? TCP_CONNECT_STRING = null;
+if (CONNECT_EP != null && CONNECT_EP_TCP)
+{
+    ConnectEP = ParseEP(CONNECT_EP);
+    Logger.Log($"Connect to Endpoint: {FormatEP(ConnectEP.host, ConnectEP.port)}");
+    TCP_CONNECT_STRING = FormatEP(ConnectEP.host, ConnectEP.port);
+}
 string BASE_PATH = Environment.GetEnvironmentVariable("BASE_PATH");
 if (string.IsNullOrEmpty(BASE_PATH))
 {
@@ -428,18 +475,30 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
 async Task<ActiveSessions> StartSession(string cookie, string procName)
 {
     int vncPort = GetFreePort(), wsPort = GetFreePort(), display = new Random().Next(1, 100);
-    var USock = $"{Path.Combine(Directory.GetCurrentDirectory(), "unix-")}{vncPort}";
+    string USock;
+    if (!NO_KIOSK)
+    {
+        USock = $"{Path.Combine(Directory.GetCurrentDirectory(), "unix-")}{vncPort}";
+    }
+    else
+    {
+        USock = $"{Path.Combine(Directory.GetCurrentDirectory(), "CONNECT_EP")}";
+    }
     var ShouldConnectToUSock = USock;
     if (RECORD_SCREEN) USock = $"{USock}.orig";
     try { File.Delete(USock); } catch { }
-    var vnc = Process.Start(new ProcessStartInfo($"{vncserver}", $" :{display} -rfbunixpath {USock} -SecurityTypes None -geometry {W}x{H}") { UseShellExecute = false })!;
-    if (!await WaitForUnixSocketOpenAsync($"{USock}"))
-        Logger.Log($"Warning: vnc server on port {USock} did not open");
-    var appProc = Process.Start(new ProcessStartInfo(procName)
+    Process? vnc = null, appProc = null;
+    if (!NO_KIOSK)
     {
-        UseShellExecute = false,
-        Environment = { ["DISPLAY"] = $":{display}" }
-    })!;
+        vnc = Process.Start(new ProcessStartInfo($"{vncserver}", $" :{display} -rfbunixpath {USock} -SecurityTypes None -geometry {W}x{H}") { UseShellExecute = false })!;
+        if (!await WaitForUnixSocketOpenAsync($"{USock}"))
+            Logger.Log($"Warning: vnc server on port {USock} did not open");
+        appProc = Process.Start(new ProcessStartInfo(procName)
+        {
+            UseShellExecute = false,
+            Environment = { ["DISPLAY"] = $":{display}" }
+        })!;
+    }
     Process? Duplicator = null;
     if (RECORD_SCREEN)
     {
@@ -448,13 +507,37 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
             Logger.Log($"Warning: vnc server on port {ShouldConnectToUSock} did not open");
     }
     Process wsProc;
-    if (WEBSOCKIFY == "websockify-rs")
+    if (!CONNECT_EP_TCP)
     {
-        wsProc = Process.Start(new ProcessStartInfo("websockify-rs", $"{ShouldConnectToUSock} ws-{wsPort} --listen-unix --upstream-unix") { UseShellExecute = false })!;
+        if (WEBSOCKIFY == "websockify-rs")
+        {
+            wsProc = Process.Start(new ProcessStartInfo("websockify-rs", $"{ShouldConnectToUSock} ws-{wsPort} --listen-unix --upstream-unix") { UseShellExecute = false })!;
+        }
+        else if (WEBSOCKIFY == "wscs")
+        {
+            wsProc = Process.Start(new ProcessStartInfo("wscs", $"--unix-listen=ws-{wsPort} --unix-target={ShouldConnectToUSock} --source-type=ws") { UseShellExecute = false })!;
+            Logger.Log($"WSCS instance: {wsProc.StartInfo.FileName} {wsProc.StartInfo.Arguments}");
+        }
+        else
+        {
+            wsProc = Process.Start(new ProcessStartInfo("websockify", $"--unix-listen=ws-{wsPort} --unix-target={ShouldConnectToUSock}") { UseShellExecute = false })!;
+        }
     }
     else
     {
-        wsProc = Process.Start(new ProcessStartInfo("websockify", $"--unix-listen=ws-{wsPort} --unix-target={ShouldConnectToUSock}") { UseShellExecute = false })!;
+        if (WEBSOCKIFY == "websockify-rs")
+        {
+            wsProc = Process.Start(new ProcessStartInfo("websockify-rs", $"{TCP_CONNECT_STRING} ws-{wsPort} --listen-unix") { UseShellExecute = false })!;
+        }
+        else if (WEBSOCKIFY == "wscs")
+        {
+            wsProc = Process.Start(new ProcessStartInfo("wscs", $"--unix-listen=ws-{wsPort} --unix-target=tcp://{TCP_CONNECT_STRING} --source-type=ws") { UseShellExecute = false })!;
+            Logger.Log($"WSCS instance: {wsProc.StartInfo.FileName} {wsProc.StartInfo.Arguments}");
+        }
+        else
+        {
+            wsProc = Process.Start(new ProcessStartInfo("websockify", $"--unix-listen=ws-{wsPort} {TCP_CONNECT_STRING}") { UseShellExecute = false })!;
+        }
     }
     Logger.Log($"Session started: cookie={cookie}, d:{display}, vnc(pid={vnc.Id}@unix-{vncPort}), {procName}(pid={appProc.Id}), ws(pid={wsProc.Id}@{wsPort})");
     return new ActiveSessions
