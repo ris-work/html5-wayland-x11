@@ -101,7 +101,7 @@ string FormatEP(string host, int port)
     => host.Contains(':')
       ? $"[{host}]:{port}"
       : $"{host}:{port}";
-(string host, int port) ConnectEP;
+(string host, int port) ConnectEP = ("", 0);
 string? TCP_CONNECT_STRING = null;
 if (CONNECT_EP != null && CONNECT_EP_TCP)
 {
@@ -359,7 +359,16 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
 {
     int vncPort = GetFreePort();
     int display = new Random().Next(1, 100);
-    var USock = $"unix-{vncPort}";
+    string USock;
+    if (!NO_KIOSK)
+    {
+        USock = $"{Path.Combine(Directory.GetCurrentDirectory(), "unix-")}{vncPort}";
+        USock = $"unix-{vncPort}";
+    }
+    else
+    {
+        USock = $"{Path.Combine(Directory.GetCurrentDirectory(), CONNECT_EP)}";
+    }
     var ShouldConnectToUSock = USock;
     if (RECORD_SCREEN) USock = $"{USock}.orig";
     var vnc = Process.Start(new ProcessStartInfo(
@@ -399,27 +408,27 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     /* Generate WebRTC Forwarder TOML configuration */
     var OffererToml = Toml.FromModel((new ForwarderConfigOut()
     {
-        Address = $"{ShouldConnectToUSock}",
+        Address = CONNECT_EP_TCP ? ConnectEP.host : $"{ShouldConnectToUSock}",
         PublishAuthUser = randomUsername,
         PublishAuthPass = randomPassword,
         PeerPSK = randomPeerPSK,
         PublishEndpoint = $"wss://vz.al/anonwsmul/{randomSessionName}/wso",
-        Port = $"{ShouldConnectToUSock}",
+        Port = CONNECT_EP_TCP ? $"{ConnectEP.port}" : $"{ShouldConnectToUSock}",
         PublishAuthType = "Basic",
-        Type = "UDS",
+        Type = CONNECT_EP_TCP ? "TCP" : "UDS",
         WebRTCMode = "Offer",
     }).ToTomlTable());
     // build base table
     var atbl = new ForwarderConfigOut
     {
-        Address = $"{ShouldConnectToUSock}",
+        Address = CONNECT_EP_TCP ? ConnectEP.host : $"{ShouldConnectToUSock}",
         PublishAuthUser = randomUsername,
         PublishAuthPass = randomPassword,
         PeerPSK = randomPeerPSK,
         PublishEndpoint = $"wss://vz.al/anonwsmul/{randomSessionName}/wsa",
-        Port = $"{ShouldConnectToUSock}",
+        Port = CONNECT_EP_TCP ? $"{ConnectEP.port}" : $"{ShouldConnectToUSock}",
         PublishAuthType = "Basic",
-        Type = "UDS",
+        Type = CONNECT_EP_TCP ? "TCP" : "UDS",
         WebRTCMode = "Accept",
     }.ToTomlTable();
 
