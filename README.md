@@ -32,6 +32,11 @@ export RECORD_SCREEN=false #Needs duplicator executable, dumps RFB session TCP s
 export ANSWERER_TURN_USERNAME=xxxx 
 export ANSWERER_TURN_CREDENTIAL=xxxx 
 export ANSWERER_TURN_SERVER=turn:xxxx.xxxx.com 
+#Use the following for static non-kiosk sessions
+#export NO_KIOSK=true
+#export CONNECT_ENDPOINT=127.0.0.1:5900
+#export WEBSOCKIFY=wscs
+#export CONNECT_ENDPOINT_TCP=true
 ```
 
 ## Usage 

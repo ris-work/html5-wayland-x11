@@ -677,10 +677,14 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
     await Task.Delay(100);
     if (!await WaitForFileCreationAsync($"{USock}"))
         Logger.Log($"Warning: vnc server on port unix-{vncPort} did not open");
-    var appProc = Process.Start(new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"{procName}\"")
+    Process? appProc = null;
+    if (!NO_KIOSK)
     {
-        UseShellExecute = false,
-    })!;
+        appProc = Process.Start(new ProcessStartInfo("swaymsg", $"-s {RTSock} exec \"{procName}\"")
+        {
+            UseShellExecute = false,
+        })!;
+    }
     await Task.Delay(50);
     var s = new ActiveSessions
     {
