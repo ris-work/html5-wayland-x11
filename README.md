@@ -56,7 +56,7 @@ You need to have the `duplicator` executable in PATH.
 
 ## Requiremets
 #### For all  
-`websockify` or `websockify-rs`  
+`websockify` or `websockify-rs` or `wscs`   
 `x11-apps` (for default apps)  
 `x11-utils` (for default apps)  
 
@@ -108,6 +108,10 @@ https://vz.al/repos/duplicator/home
 
 ###### WebRTC Forwarding Utilities 
 https://vz.al/repos/webrtc-udp-tcp-forwarder/home    
+[unversioned binaries (uv)](https://vz.al/repos/webrtc-udp-tcp-forwarder/uv) 
+
+###### WebSocket (wscs) Forwarding Utilities 
+https://vz.al/repos/wscs/home    
 [unversioned binaries (uv)](https://vz.al/repos/webrtc-udp-tcp-forwarder/uv) 
 
 ### License
