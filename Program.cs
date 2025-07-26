@@ -359,6 +359,7 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
 {
     int vncPort = GetFreePort();
     int display = new Random().Next(1, 100);
+    Process? vnc = null, appProc = null;
     string USock;
     if (!NO_KIOSK)
     {
@@ -371,20 +372,26 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     }
     var ShouldConnectToUSock = USock;
     if (RECORD_SCREEN) USock = $"{USock}.orig";
-    var vnc = Process.Start(new ProcessStartInfo(
-        $"{vncserver}",
-        $":{display} -rfbunixpath {USock} -SecurityTypes None -geometry {W}x{H}"
-    )
-    { UseShellExecute = true })!;
+    if (!NO_KIOSK)
+    {
+        vnc = Process.Start(new ProcessStartInfo(
+            $"{vncserver}",
+            $":{display} -rfbunixpath {USock} -SecurityTypes None -geometry {W}x{H}"
+        )
+        { UseShellExecute = true })!;
+    }
     Console.WriteLine($"RECORD_SCREEN: {RECORD_SCREEN}");
     if (!await WaitForUnixSocketOpenAsync($"{USock}"))
         Logger.Log($"Warning: vnc @ {USock} did not open");
 
-    var appProc = Process.Start(new ProcessStartInfo(procName)
+    if (!NO_KIOSK)
     {
-        UseShellExecute = false,
-        Environment = { ["DISPLAY"] = $":{display}" }
-    })!;
+        appProc = Process.Start(new ProcessStartInfo(procName)
+        {
+            UseShellExecute = false,
+            Environment = { ["DISPLAY"] = $":{display}" }
+        })!;
+    }
 
     byte[] peerPSK = new byte[40];
     byte[] randomUsernameBytes = new byte[20];
@@ -448,7 +455,7 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     var theirForwarderToml = OffererToml;
     configOurs = AnswererToml;
     string configTheirs = OffererToml;
-    Logger.Log($"Session started WebRTC: cookie={cookie}, display={display}, vnc(pid={vnc.Id}), app(pid={appProc.Id}), config={configOurs}, configTheirs={configTheirs}, ShouldConnectToSock={ShouldConnectToUSock}, USock={USock}");
+    Logger.Log($"Session started WebRTC: cookie={cookie}, display={display}, vnc(pid={vnc?.Id}), app(pid={appProc?.Id}), config={configOurs}, configTheirs={configTheirs}, ShouldConnectToSock={ShouldConnectToUSock}, USock={USock}");
 
     var s = new ActiveSessions
     {
