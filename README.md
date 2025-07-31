@@ -41,6 +41,20 @@ export ANSWERER_TURN_SERVER=turn:xxxx.xxxx.com
 #export ALWAYS_NEW_SESSION=true
 ```
 
+#### PowerShell Examples (Microsoft Windows (R))
+```
+$Env:NO_KIOSK="true"
+$Env:CONNECT_ENDPOINT_TCP="true"
+$Env:WEBSOCKIFY="wscs"
+$Env:CONNECT_ENDPOINT="127.0.0.1:5900"
+$Env:ASPNETCORE_URLS="http://192.168.1.125:5055"
+$Env:ANSWERER_TURN_USERNAME=""username"
+$Env:ANSWERER_TURN_CREDENTIAL="credential"
+$Env:ANSWERER_TURN_SERVER="turn:turn.server.example.com:example_port"
+$Env:BASE_PATH="/reverse_proxy_subdirectory/"
+fw.exe
+```
+
 ## Usage 
 ```
 ?WebRTC=true <== ENABLE WEBRTC, otherwise use WebSockets 
