@@ -70,6 +70,8 @@ string? CONNECT_EP = null;
 if (Environment.GetEnvironmentVariable("NO_KIOSK")?.ToLowerInvariant() == "true") NO_KIOSK = true;
 bool CONNECT_EP_TCP = false;
 if (Environment.GetEnvironmentVariable("CONNECT_ENDPOINT_TCP")?.ToLowerInvariant() == "true") CONNECT_EP_TCP = true;
+bool ALWAYS_NEW_SESSION = false;
+if (Environment.GetEnvironmentVariable("ALWAYS_NEW_SESSION")?.ToLowerInvariant() == "true") ALWAYS_NEW_SESSION = true;
 if (NO_KIOSK)
 {
     CONNECT_EP = Environment.GetEnvironmentVariable("CONNECT_ENDPOINT");
@@ -83,6 +85,8 @@ if (NO_KIOSK)
     }
 }
 Console.WriteLine($"websockify: {WEBSOCKIFY}");
+Console.WriteLine($"connect_ep_tcp: {CONNECT_EP_TCP}");
+Console.WriteLine($"always_new_session: {ALWAYS_NEW_SESSION}");
 // parse “host:port” or “[host]:port”
 (string host, int port) ParseEP(string s)
 {
@@ -846,7 +850,7 @@ app.MapGet("/", async (HttpContext context) =>
     string cookie = context.Request.Cookies[sessionCookieName] ?? Guid.NewGuid().ToString();
     context.Response.Cookies.Append(sessionCookieName, cookie);
     ActiveSessions session;
-    if (!sessions.Any(s => s.Cookie == cookie))
+    if (ALWAYS_NEW_SESSION || !sessions.Any(s => s.Cookie == cookie))
     {
         if (!IsWebRTCSession)
         {
