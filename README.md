@@ -37,6 +37,8 @@ export ANSWERER_TURN_SERVER=turn:xxxx.xxxx.com
 #export CONNECT_ENDPOINT=127.0.0.1:5900
 #export WEBSOCKIFY=wscs
 #export CONNECT_ENDPOINT_TCP=true
+#Discard cookies and always create a new session
+#export ALWAYS_NEW_SESSION=true
 ```
 
 ## Usage 
