@@ -19,6 +19,7 @@ using Tomlyn;
 using Tomlyn.Model;
 using System.Security.Cryptography;
 using System.Data;
+using Microsoft.Extensions.Primitives;
 
 // ----------------------------------------------------------------
 // Top-level statements (all types come after)
@@ -31,6 +32,7 @@ string defaultApp = "xpaint"; // why: default safe app
 string[] approvedCommands = new string[] { "xeyes", "xclock", "scalc", "vkcube", "glxgears", "xgc", "oclock", "ico", "xcalc" }; // why: restrict allowed commands
 List<ActiveSessions> sessions = new();
 Logger.Debug = true; // why: enable logging
+string[] PreservedParameters = new[] { "password", "scale" };
 
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
@@ -841,6 +843,10 @@ app.MapGet("/", async (HttpContext context) =>
     bool IsWebRTCSession = QIsWebRTCSession.ToLowerInvariant() == "true";
     if (string.IsNullOrEmpty(targetApp))
         targetApp = defaultApp;
+    var extraQs = string.Concat(PreservedParameters.Select(p =>
+    context.Request.Query.TryGetValue(p, out StringValues v) && !StringValues.IsNullOrEmpty(v)
+      ? $"&{p}={Uri.EscapeDataString(v.First())}"
+      : ""));
     if (!approvedCommands.Contains(targetApp))
     { // why: restrict allowed commands
         Logger.Log($"Disallowed app '{targetApp}' requested, defaulting to {defaultApp}");
@@ -873,11 +879,11 @@ app.MapGet("/", async (HttpContext context) =>
     await Task.Delay(150);
     if (!session.IsWebRTCSession)
     {
-        context.Response.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
+        context.Response.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}");
     }
     else
     {
-        context.Response.Redirect($"{BASE_PATH}static/vncrtc.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
+        context.Response.Redirect($"{BASE_PATH}static/vncrtc.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}");
     }
     //context.Response.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
 });
