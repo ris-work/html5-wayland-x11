@@ -853,7 +853,7 @@ app.MapGet("/", async (HttpContext context) =>
         targetApp = defaultApp;
     }
     string sessionCookieName = $"session_{targetApp}";
-    string cookie = context.Request.Cookies[sessionCookieName] ?? Guid.NewGuid().ToString();
+    string cookie = ALWAYS_NEW_SESSION ? Guid.NewGuid().ToString() : (context.Request.Cookies[sessionCookieName] ?? Guid.NewGuid().ToString());
     context.Response.Cookies.Append(sessionCookieName, cookie);
     ActiveSessions session;
     if (ALWAYS_NEW_SESSION || !sessions.Any(s => s.Cookie == cookie))
