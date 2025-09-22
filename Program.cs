@@ -451,7 +451,7 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     // inject TURN/STUN if set for the offerer
     if (Environment.GetEnvironmentVariable("OFFERER_TURN_SERVER") is string turno && turno != "")
     {
-        if (Environment.GetEnvironmentVariable("OFFERER_TURN_SERVER") is string turnou && turnou != "")
+        if (Environment.GetEnvironmentVariable("OFFERER_TURN_USERNAME") is string turnou && turnou != "")
         {
             otbl["ICEServers"] = new TomlArray {
                 new TomlTable {
