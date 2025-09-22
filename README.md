@@ -39,6 +39,11 @@ export ANSWERER_TURN_SERVER=turn:xxxx.xxxx.com
 #export CONNECT_ENDPOINT_TCP=true
 #Discard cookies and always create a new session
 #export ALWAYS_NEW_SESSION=true
+#Use STUN/TURN for the offerer too. Pure STUN is supported for this unlike the ANSWERER TURN configuration.
+#Warning: Will be sent to the clients. Proceed at your own risk, or just use STUN over TURN for the offerer side.
+#export OFFERER_TURN_SERVER=stun:xxxx
+#export ANSWERER_TURN_CREDENTIAL=xxxx 
+#export ANSWERER_TURN_SERVER=turn:xxxx.xxxx.com 
 ```
 
 #### PowerShell Examples (Microsoft Windows (R))
@@ -51,6 +56,7 @@ $Env:ASPNETCORE_URLS="http://192.168.1.125:5055"
 $Env:ANSWERER_TURN_USERNAME=""username"
 $Env:ANSWERER_TURN_CREDENTIAL="credential"
 $Env:ANSWERER_TURN_SERVER="turn:turn.server.example.com:example_port"
+$Env:OFFERER_TURN_SERVER="stun:stun.server.example.com:example_port"
 $Env:BASE_PATH="/reverse_proxy_subdirectory/"
 fw.exe
 ```
