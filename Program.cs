@@ -410,10 +410,7 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
     string randomSessionName = Wiry.Base32.Base32Encoding.Standard.GetString(randomSessionNameBytes);
 
 
-
-
-    /* Generate WebRTC Forwarder TOML configuration */
-    var OffererToml = Toml.FromModel((new ForwarderConfigOut()
+    var otbl = new ForwarderConfigOut()
     {
         Address = CONNECT_EP_TCP ? ConnectEP.host : $"{ShouldConnectToUSock}",
         PublishAuthUser = randomUsername,
@@ -424,7 +421,9 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
         PublishAuthType = "Basic",
         Type = CONNECT_EP_TCP ? "TCP" : "UDS",
         WebRTCMode = "Offer",
-    }).ToTomlTable());
+    }.ToTomlTable();
+
+    /* Generate WebRTC Forwarder TOML configuration */
     // build base table
     var atbl = new ForwarderConfigOut
     {
@@ -448,6 +447,31 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
             ["Credential"] = Environment.GetEnvironmentVariable("ANSWERER_TURN_CREDENTIAL")
         }
     };
+
+    // inject TURN/STUN if set for the offerer
+    if (Environment.GetEnvironmentVariable("OFFERER_TURN_SERVER") is string turno && turno != "")
+    {
+        if (Environment.GetEnvironmentVariable("OFFERER_TURN_SERVER") is string turnou && turnou != "")
+        {
+            otbl["ICEServers"] = new TomlArray {
+                new TomlTable {
+                    ["URLs"]       = new TomlArray { turno },
+                    ["Username"]   = Environment.GetEnvironmentVariable("OFFERER_TURN_USERNAME"),
+                    ["Credential"] = Environment.GetEnvironmentVariable("OFFERER_TURN_CREDENTIAL")
+                }
+            };
+        }
+        else
+        {
+            otbl["ICEServers"] = new TomlArray {
+                new TomlTable { ["URLs"] = new TomlArray { turno }, }
+            };
+        }
+    }
+        ;
+
+    /* Generate WebRTC Forwarder TOML configuration */
+    var OffererToml = Toml.FromModel(otbl);
 
     // serialize
     var AnswererToml = Toml.FromModel(atbl);

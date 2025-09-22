@@ -37,6 +37,11 @@ export ANSWERER_TURN_SERVER=turn:xxxx.xxxx.com
 #export CONNECT_ENDPOINT=127.0.0.1:5900
 #export WEBSOCKIFY=wscs
 #export CONNECT_ENDPOINT_TCP=true
+#Use STUN/TURN for the offerer too. Pure STUN is supported for this unlike the ANSWERER TURN configuration.
+#Warning: Will be sent to the clients. Proceed at your own risk, or just use STUN over TURN for the offerer side.
+#export OFFERER_TURN_SERVER=stun:xxxx
+#export OFFERER_TURN_USERNAME=xxxx 
+#export OFFERER_TURN_CREDENTIAL=xxxx
 ```
 
 ## Usage 
