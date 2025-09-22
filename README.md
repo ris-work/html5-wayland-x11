@@ -42,8 +42,8 @@ export ANSWERER_TURN_SERVER=turn:xxxx.xxxx.com
 #Use STUN/TURN for the offerer too. Pure STUN is supported for this unlike the ANSWERER TURN configuration.
 #Warning: Will be sent to the clients. Proceed at your own risk, or just use STUN over TURN for the offerer side.
 #export OFFERER_TURN_SERVER=stun:xxxx
-#export ANSWERER_TURN_CREDENTIAL=xxxx 
-#export ANSWERER_TURN_SERVER=turn:xxxx.xxxx.com 
+#export OFFERER_TURN_USERNAME=xxxx 
+#export OFFERER_TURN_CREDENTIAL=xxxx 
 ```
 
 #### PowerShell Examples (Microsoft Windows (R))
