@@ -906,7 +906,7 @@ app.MapGet("/", async (HttpContext context) =>
     }
     else
     {
-        context.Response.Redirect($"{BASE_PATH}static/vncrtc.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}");
+        context.Response.Redirect($"{BASE_PATH}static/vncrtckeepalive.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}");
     }
     //context.Response.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
 });
