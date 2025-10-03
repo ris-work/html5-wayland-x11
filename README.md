@@ -44,6 +44,10 @@ export ANSWERER_TURN_SERVER=turn:xxxx.xxxx.com
 #export OFFERER_TURN_SERVER=stun:xxxx
 #export OFFERER_TURN_USERNAME=xxxx 
 #export OFFERER_TURN_CREDENTIAL=xxxx 
+#Use authentication: (HTTP BASIC, or can also be used with querystrings in case the header cannot be set: ?u=xxxx&p=xxxx OR ?user=xxxx&pass=xxxx)
+#export USE_AUTHENTICATION=true
+#export AUTH_USERNAME=xxxx
+#export AUTH_PASSWORD=xxxx
 ```
 
 #### PowerShell Examples (Microsoft Windows (R))
