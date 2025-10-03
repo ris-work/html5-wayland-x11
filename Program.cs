@@ -927,17 +927,17 @@ app.MapGet("/", async Task<IResult> (HttpContext context) =>
     {
         session = sessions.First(s => s.Cookie == cookie);
         Logger.Log($"Existing session for cookie={cookie} app={targetApp}");
+
     }
     await Task.Delay(150);
     if (!session.IsWebRTCSession)
     {
-        context.Response.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}");
+        return Results.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}");
     }
     else
     {
-        context.Response.Redirect($"{BASE_PATH}static/vncrtckeepalive.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}");
+        return Results.Redirect($"{BASE_PATH}static/vncrtckeepalive.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}");
     }
-    return Results.Ok();
     //context.Response.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
 });
 
