@@ -20,6 +20,7 @@ using Tomlyn;
 using Tomlyn.Model;
 using System.Security.Cryptography;
 using System.Data;
+using Microsoft.Extensions.Primitives;
 
 // ----------------------------------------------------------------
 // Top-level statements (all types come after)
@@ -54,6 +55,25 @@ if (string.IsNullOrEmpty(DEFAULT_PROGRAM_NAME))
 }
 defaultApp = DEFAULT_PROGRAM_NAME;
 if (Environment.GetEnvironmentVariable("RECORD_SCREEN")?.ToLowerInvariant() == "true") RECORD_SCREEN = true;
+
+bool USE_AUTHENTICATION = false;
+if (Environment.GetEnvironmentVariable("USE_AUTHENTICATION")?.ToLowerInvariant() == "true") USE_AUTHENTICATION = true;
+
+string? AUTH_USERNAME = Environment.GetEnvironmentVariable("AUTH_USERNAME");
+string? AUTH_PASSWORD = Environment.GetEnvironmentVariable("AUTH_PASSWORD");
+if (USE_AUTHENTICATION)
+{
+    if (AUTH_USERNAME == null)
+    {
+        Console.WriteLine("AUTHORIZATION requested but AUTH_USERNAME not specified");
+        AUTH_USERNAME = "";
+    }
+    if (AUTH_PASSWORD == null)
+    {
+        Console.WriteLine("AUTHORIZATION requested but AUTH_USERNAME not specified");
+        AUTH_PASSWORD = "";
+    }
+}
 
 // Retrieve the WEBSOCKIFY environment variable.
 // If it is not provided or is empty, default to "websockify".
@@ -691,19 +711,29 @@ app.MapGet("/", async (HttpContext context) =>
     string cookie = context.Request.Cookies[sessionCookieName] ?? Guid.NewGuid().ToString();
     context.Response.Cookies.Append(sessionCookieName, cookie);
     ActiveSessions session;
+    bool IS_AUTHORIZED = !USE_AUTHENTICATION || context.TryAuthenticate(AUTH_USERNAME, AUTH_PASSWORD);
     if (!sessions.Any(s => s.Cookie == cookie))
     {
-        if (!IsWebRTCSession)
+        if (IS_AUTHORIZED)
         {
-            session = await StartSession(cookie, targetApp);
-            sessions.Add(session);
-            Logger.Log($"New session for cookie={cookie} app={targetApp}");
+            if (!IsWebRTCSession)
+            {
+                session = await StartSession(cookie, targetApp);
+                sessions.Add(session);
+                Logger.Log($"New session for cookie={cookie} app={targetApp}");
+            }
+            else
+            {
+                session = await StartWebRTCSession(cookie, targetApp, cleanup);
+                Logger.Log("WebRTC Session Requested");
+                sessions.Add(session);
+            }
         }
         else
         {
-            session = await StartWebRTCSession(cookie, targetApp, cleanup);
-            Logger.Log("WebRTC Session Requested");
-            sessions.Add(session);
+            context.Response.Headers.Append(
+  "WWW-Authenticate", $"Basic realm=\"\", charset=\"UTF-8\"");
+            return Results.Unauthorized();
         }
     }
     else
@@ -714,11 +744,11 @@ app.MapGet("/", async (HttpContext context) =>
     await Task.Delay(1500);
     if (!session.IsWebRTCSession)
     {
-        context.Response.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
+        return Results.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
     }
     else
     {
-        context.Response.Redirect($"{BASE_PATH}static/vncrtckeepalive.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
+        return Results.Redirect($"{BASE_PATH}static/vncrtckeepalive.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
     }
 });
 
@@ -982,5 +1012,95 @@ public class ForwarderConfigOut
             ["TimeoutCountMax"] = TimeoutCountMax
 
         };
+    }
+}
+
+
+static class HttpContextExtensions
+{
+    public static bool TryAuthenticate(this HttpContext context, string expectedUser, string expectedPass)
+    {
+        var req = context.Request;
+        Logger.Log($"[Auth] Starting authentication check for path {req.Path}");
+
+        // 1) Basic auth header
+        if (req.Headers.TryGetValue("Authorization", out StringValues authHeader))
+        {
+            var header = authHeader.FirstOrDefault();
+            Logger.Log($"[Auth] Authorization header: {header ?? "<empty>"}");
+
+            if (!string.IsNullOrEmpty(header) &&
+                header.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase))
+            {
+                Logger.Log("[Auth] Detected Basic scheme");
+                var payload = header["Basic ".Length..].Trim();
+
+                try
+                {
+                    var raw = Convert.FromBase64String(payload);
+                    var decoded = Encoding.UTF8.GetString(raw);
+                    var parts = decoded.Split(':', 2);
+
+                    if (parts.Length == 2)
+                    {
+                        var u = parts[0];
+                        var p = parts[1];
+                        Logger.Log($"[Auth] Decoded creds: user={u}; pass length={p.Length}");
+
+                        if (u == expectedUser && p == expectedPass)
+                        {
+                            Logger.Log($"[Auth] Basic auth succeeded for user {u}");
+                            return true;
+                        }
+
+                        Logger.Log($"[Auth] Basic auth mismatch (got {u}/****)");
+                    }
+                    else
+                    {
+                        Logger.Log($"[Auth] Payload split into {parts.Length} parts, expected 2");
+                    }
+                }
+                catch (FormatException ex)
+                {
+                    Logger.Log($"[Auth] Invalid Base64: {ex.Message}");
+                }
+            }
+            else
+            {
+                Logger.Log("[Auth] Header did not start with 'Basic '");
+            }
+        }
+        else
+        {
+            Logger.Log("[Auth] No Authorization header found");
+        }
+
+        // 2) Query-string fallback
+        Logger.Log("[Auth] Falling back to query-string");
+        var userQuery = GetQueryValue(req, "user", "u");
+        var passQuery = GetQueryValue(req, "pass", "p");
+        Logger.Log($"[Auth] Query values: user={userQuery ?? "<null>"}; pass length={passQuery?.Length ?? 0}");
+
+        if (userQuery == expectedUser && passQuery == expectedPass)
+        {
+            Logger.Log($"[Auth] Query-string auth succeeded for user {userQuery}");
+            return true;
+        }
+
+        Logger.Log($"[Auth] Query-string auth failed (got {userQuery ?? "<null>"}/****)");
+        return false;
+    }
+
+    private static string GetQueryValue(HttpRequest req, params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            if (req.Query.TryGetValue(key, out var value) &&
+                !StringValues.IsNullOrEmpty(value))
+            {
+                return value.ToString();
+            }
+        }
+        return null;
     }
 }
