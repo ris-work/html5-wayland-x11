@@ -56,12 +56,12 @@ if (string.IsNullOrEmpty(DEFAULT_PROGRAM_NAME))
 defaultApp = DEFAULT_PROGRAM_NAME;
 if (Environment.GetEnvironmentVariable("RECORD_SCREEN")?.ToLowerInvariant() == "true") RECORD_SCREEN = true;
 
-bool USE_AUTHORIZATION = false;
-if (Environment.GetEnvironmentVariable("USE_AUTHORIZATION")?.ToLowerInvariant() == "true") USE_AUTHORIZATION = true;
+bool USE_AUTHENTICATION = false;
+if (Environment.GetEnvironmentVariable("USE_AUTHENTICATION")?.ToLowerInvariant() == "true") USE_AUTHENTICATION = true;
 
 string? AUTH_USERNAME = Environment.GetEnvironmentVariable("AUTH_USERNAME");
 string? AUTH_PASSWORD = Environment.GetEnvironmentVariable("AUTH_PASSWORD");
-if (USE_AUTHORIZATION)
+if (USE_AUTHENTICATION)
 {
     if (AUTH_USERNAME == null)
     {
@@ -898,7 +898,7 @@ app.MapGet("/", async Task<IResult> (HttpContext context) =>
     string cookie = ALWAYS_NEW_SESSION ? Guid.NewGuid().ToString() : (context.Request.Cookies[sessionCookieName] ?? Guid.NewGuid().ToString());
     context.Response.Cookies.Append(sessionCookieName, cookie);
     ActiveSessions session;
-    bool IS_AUTHORIZED = !USE_AUTHORIZATION || context.TryAuthenticate(AUTH_USERNAME, AUTH_PASSWORD);
+    bool IS_AUTHORIZED = !USE_AUTHENTICATION || context.TryAuthenticate(AUTH_USERNAME, AUTH_PASSWORD);
     if (ALWAYS_NEW_SESSION || !sessions.Any(s => s.Cookie == cookie))
     {
         if (IS_AUTHORIZED)
