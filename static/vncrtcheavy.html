@@ -169,25 +169,62 @@
 }
 
         // Function to create the RFB connection when the data channel is ready
-        window.Link = function() {
-            // Creating a new RFB object will start a new connection
-            rfb = new RFB(document.getElementById('noVNC_container'), vncDC,
-                        { credentials: { password: password } });
+// Replace the entire window.Link function with this:
+// Replace the entire window.Link function with this:
+// Replace the entire window.Link function with this:
 
-            // Add listeners to important events from the RFB module
-            rfb.addEventListener("connect", connectedToServer);
-            rfb.addEventListener("disconnect", disconnectedFromServer);
-            rfb.addEventListener("credentialsrequired", credentialsAreRequired);
-            rfb.addEventListener("desktopname", updateDesktopName);
+// Replace the entire window.Link function with this:
+	// Replace the entire window.Link function with this:
+window.Link = function() {
+    // First, remove the "noVNC_loading" class to stop the loading indicator
+    document.documentElement.classList.remove('noVNC_loading');
 
-            // Set parameters that can be changed on an active connection
-            rfb.viewOnly = readQueryVariable('view_only', false);
-            rfb.scaleViewport = readQueryVariable('scale', false);
-            
-            // Hide the connect dialog when connected
-            document.getElementById('noVNC_connect_dlg').style.display = 'none';
-        };
+    // Hide the connect dialog
+    document.getElementById('noVNC_connect_dlg').style.display = 'none';
 
+    try {
+        // Creating a new RFB object will start a new connection
+        rfb = new RFB(document.getElementById('noVNC_container'), vncDC,
+                     { credentials: { password: password } });
+
+        // Add listeners to important events from the RFB module
+        rfb.addEventListener("connect", connectedToServer);
+        rfb.addEventListener("disconnect", disconnectedFromServer);
+        rfb.addEventListener("credentialsrequired", credentialsAreRequired);
+        rfb.addEventListener("desktopname", updateDesktopName);
+
+        // Set parameters that can be changed on an active connection
+        rfb.viewOnly = readQueryVariable('view_only', false);
+        rfb.scaleViewport = readQueryVariable('scale', false);
+
+        // Initialize UI controls without trying to instantiate UI
+        import('./app/ui.js').then(UI => {
+            // Set up the disconnect button
+            document.getElementById('noVNC_disconnect_button').addEventListener('click', () => {
+                rfb.disconnect();
+            });
+
+            // Initialize other UI controls
+            // We'll need to manually set up event handlers for each control
+            // For example:
+            document.getElementById('noVNC_keyboard_button').addEventListener('click', () => {
+                // Show keyboard logic
+            });
+
+            document.getElementById('noVNC_send_ctrl_alt_del_button').addEventListener('click', () => {
+                rfb.sendCtrlAltDel();
+            });
+
+            // Add more control initializations as needed
+        }).catch(err => {
+            console.error("Error loading UI module:", err);
+            // Even if UI module fails, the RFB connection should still work
+        });
+    } catch (error) {
+        console.error("Error initializing RFB connection:", error);
+        document.getElementById('noVNC_status').textContent = "Error: " + error.message;
+    }
+};
         // Initialize the data channel to start the WebRTC connection
         initDC();
     </script>
