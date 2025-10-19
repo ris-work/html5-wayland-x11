@@ -187,6 +187,7 @@ window.Link = function() {
         rfb = new RFB(document.getElementById('noVNC_container'), vncDC,
                      { credentials: { password: password } });
 
+        window.rfb=rfb;
         // Add listeners to important events from the RFB module
         rfb.addEventListener("connect", connectedToServer);
         rfb.addEventListener("disconnect", disconnectedFromServer);
