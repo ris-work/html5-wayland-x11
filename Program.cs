@@ -59,6 +59,9 @@ if (Environment.GetEnvironmentVariable("RECORD_SCREEN")?.ToLowerInvariant() == "
 bool USE_AUTHENTICATION = false;
 if (Environment.GetEnvironmentVariable("USE_AUTHENTICATION")?.ToLowerInvariant() == "true") USE_AUTHENTICATION = true;
 
+bool HEAVY = false;
+if (Environment.GetEnvironmentVariable("HEAVY")?.ToLowerInvariant() == "true") HEAVY = true;
+
 string? AUTH_USERNAME = Environment.GetEnvironmentVariable("AUTH_USERNAME");
 string? AUTH_PASSWORD = Environment.GetEnvironmentVariable("AUTH_PASSWORD");
 if (USE_AUTHENTICATION)
@@ -699,7 +702,12 @@ app.MapGet("/", async (HttpContext context) =>
     Logger.Log($"QIsWebRTCSession: {QIsWebRTCSession}");
     if (string.IsNullOrEmpty(QIsWebRTCSession))
         QIsWebRTCSession = "false";
+    string QIsHeavy = context.Request.Query["heavy"];
+    Logger.Log($"QIsHeavy: {QIsHeavy}");
+    if (string.IsNullOrEmpty(QIsHeavy))
+        QIsHeavy = "false";
     bool IsWebRTCSession = QIsWebRTCSession.ToLowerInvariant() == "true";
+    bool IsHeavySessionRequested = QIsHeavy.ToLowerInvariant() == "true";
     if (string.IsNullOrEmpty(targetApp))
         targetApp = defaultApp;
     if (!approvedCommands.Contains(targetApp))
@@ -744,11 +752,11 @@ app.MapGet("/", async (HttpContext context) =>
     await Task.Delay(1500);
     if (!session.IsWebRTCSession)
     {
-        return Results.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
+        return (HEAVY | IsHeavySessionRequested) ? Results.Redirect($"{BASE_PATH}static/vnc.html?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true") : Results.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
     }
     else
     {
-        return Results.Redirect($"{BASE_PATH}static/vncrtckeepalive.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
+        return (HEAVY | IsHeavySessionRequested) ? Results.Redirect($"{BASE_PATH}static/vncrtcheavy.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true") : Results.Redirect($"{BASE_PATH}static/vncrtckeepalive.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
     }
 });
 
