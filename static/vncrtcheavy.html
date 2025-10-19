@@ -168,12 +168,58 @@
     return { stop };
 }
 
-        // Function to create the RFB connection when the data channel is ready
-// Replace the entire window.Link function with this:
-// Replace the entire window.Link function with this:
-// Replace the entire window.Link function with this:
+// Separate function to initialize the UI with the existing RFB connection
+function initializeUIWithExistingRFB() {
+    // Import the UI module and initialize it with our existing RFB connection
+    import('./app/ui.js').then(UI => {
+        console.log('UI module loaded');
 
-// Replace the entire window.Link function with this:
+        // Start the UI with settings that prevent autoconnection
+        UI.default.start({
+            settings: {
+                defaults: {
+                    autoconnect: false
+                },
+                mandatory: {}
+            }
+        }).then(() => {
+            console.log('UI started');
+
+            // Set the RFB object to our existing connection
+            UI.default.rfb = window.rfb;
+
+            // Manually set up the event listeners that would normally be set in connect()
+            UI.default.rfb.addEventListener("connect", UI.default.connectFinished);
+            UI.default.rfb.addEventListener("disconnect", UI.default.disconnectFinished);
+            UI.default.rfb.addEventListener("serververification", UI.default.serverVerify);
+            UI.default.rfb.addEventListener("credentialsrequired", UI.default.credentials);
+            UI.default.rfb.addEventListener("securityfailure", UI.default.securityFailed);
+            UI.default.rfb.addEventListener("clippingviewport", UI.default.updateViewDrag);
+            UI.default.rfb.addEventListener("capabilities", UI.default.updatePowerButton);
+            UI.default.rfb.addEventListener("clipboard", UI.default.clipboardReceive);
+            UI.default.rfb.addEventListener("bell", UI.default.bell);
+            UI.default.rfb.addEventListener("desktopname", UI.default.updateDesktopName);
+
+            // Set the UI state to connected
+            UI.default.connected = true;
+            UI.default.inhibitReconnect = false;
+            UI.default.updateVisualState('connected');
+
+            // Update the UI elements
+            UI.default.updatePowerButton();
+            UI.default.updateViewOnly();
+
+            console.log('UI initialized with existing RFB connection');
+        }).catch(err => {
+            console.error('Error initializing UI:', err);
+        });
+    }).catch(err => {
+        console.error('Error loading UI module:', err);
+    });
+}
+
+// Modified Link() function
+        // Function to create the RFB connection when the data channel is ready
 	// Replace the entire window.Link function with this:
 window.Link = function() {
     // First, remove the "noVNC_loading" class to stop the loading indicator
@@ -197,6 +243,9 @@ window.Link = function() {
         // Set parameters that can be changed on an active connection
         rfb.viewOnly = readQueryVariable('view_only', false);
         rfb.scaleViewport = readQueryVariable('scale', false);
+
+        // Initialize the UI with our existing RFB connection, but don't wait for it
+        setTimeout(initializeUIWithExistingRFB, 0);
 
         // Initialize UI controls without trying to instantiate UI
         import('./app/ui.js').then(UI => {
