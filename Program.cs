@@ -752,11 +752,11 @@ app.MapGet("/", async (HttpContext context) =>
     await Task.Delay(1500);
     if (!session.IsWebRTCSession)
     {
-        return (HEAVY | IsHeavySessionRequested) ? Results.Redirect($"{BASE_PATH}static/vnc.html?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true") : Results.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
+        return (HEAVY || IsHeavySessionRequested) ? Results.Redirect($"{BASE_PATH}static/vnc.html?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true") : Results.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
     }
     else
     {
-        return (HEAVY | IsHeavySessionRequested) ? Results.Redirect($"{BASE_PATH}static/vncrtcheavy.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true") : Results.Redirect($"{BASE_PATH}static/vncrtckeepalive.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
+        return (HEAVY || IsHeavySessionRequested) ? Results.Redirect($"{BASE_PATH}static/vncrtcheavy.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true") : Results.Redirect($"{BASE_PATH}static/vncrtckeepalive.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
     }
 });
 
