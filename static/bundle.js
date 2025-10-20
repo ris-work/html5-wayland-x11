@@ -5717,8 +5717,8 @@
     window.conf = conf;
     console.assert(conf.WebRTCMode == "Offer");
     if (conf.WebRTCMode != "Offer") {
-      console.error("Wrong TOOL: Wrong WebRTCMode");
-      process.exit(2);
+      console.error("Wrong TOOL: Wrong WebRTCMode, retrying in 1000ms...");
+      window.setTimeout(initDC, 1e3);
     }
     console.assert(conf.PublishType == "ws");
     let connected = false;
@@ -5756,7 +5756,15 @@
     });
     sigSocket.addEventListener("close", (e) => {
       console.warn("websocket: closed");
-      if (!window.vncDC || window.initDC.readyState !== "open") initDC();
+      if (!window.vncDC || window.vncDC.readyState !== "open") {
+        console.log(`window.vncDC: ${window.vncDC}`);
+        if (window.vncDC) {
+          console.log(`window.vncDC.readyState: ${window.vncDC.readyState}`);
+        }
+        initDC();
+      } else {
+        console.log("WS disconnect: Not calling initDC() again.");
+      }
     });
     sigSocket.addEventListener("open", (e) => {
       proceedToWebRTC();
