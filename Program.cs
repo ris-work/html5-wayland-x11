@@ -883,6 +883,11 @@ app.MapGet("/", async Task<IResult> (HttpContext context) =>
     if (string.IsNullOrEmpty(QIsWebRTCSession))
         QIsWebRTCSession = "false";
     bool IsWebRTCSession = QIsWebRTCSession.ToLowerInvariant() == "true";
+    string QIsHeavy = context.Request.Query["heavy"];
+    Logger.Log($"QIsHeavy: {QIsHeavy}");
+    if (string.IsNullOrEmpty(QIsHeavy))
+        QIsHeavy = "false";
+    bool IsHeavySessionRequested = QIsHeavy.ToLowerInvariant() == "true";
     if (string.IsNullOrEmpty(targetApp))
         targetApp = defaultApp;
     var extraQs = string.Concat(PreservedParameters.Select(p =>
@@ -932,11 +937,11 @@ app.MapGet("/", async Task<IResult> (HttpContext context) =>
     await Task.Delay(150);
     if (!session.IsWebRTCSession)
     {
-        return Results.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}");
+        return IsHeavySessionRequested ? Results.Redirect($"{BASE_PATH}static/vnc.html?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}") : Results.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}");
     }
     else
     {
-        return Results.Redirect($"{BASE_PATH}static/vncrtckeepalive.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}");
+        return IsHeavySessionRequested ? Results.Redirect($"{BASE_PATH}static/vncrtcheavy.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}") : Results.Redirect($"{BASE_PATH}static/vncrtckeepalive.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}");
     }
     //context.Response.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
 });
