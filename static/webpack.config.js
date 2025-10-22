@@ -1,6 +1,5 @@
 import HtmlWebpackPlugin from 'html-webpack-plugin';
 import HtmlInlineScriptPlugin from 'html-inline-script-webpack-plugin';
-import CssMinimizerPlugin from 'css-minimizer-webpack-plugin'; // Add this
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
@@ -26,11 +25,6 @@ export default {
               sources: {
                 list: [
                   {
-                    tag: 'img',
-                    attribute: 'src',
-                    type: 'src',
-                  },
-                  {
                     tag: 'script',
                     attribute: 'src',
                     type: 'src',
@@ -39,9 +33,11 @@ export default {
                     tag: 'link',
                     attribute: 'href',
                     type: 'src',
-                    filter: (tag, attribute, attributes) => {
-                      return attributes.rel === 'stylesheet';
-                    }
+                  },
+                  {
+                    tag: 'img',
+                    attribute: 'src',
+                    type: 'src',
                   }
                 ]
               }
@@ -76,12 +72,7 @@ export default {
       }
     ]
   },
-  optimization: {
-    minimizer: [
-      '...', // This extends existing minimizers (like Terser for JS)
-      new CssMinimizerPlugin(), // Add CSS minification
-    ],
-  },
+  // REMOVED CSS minimization - causing conflicts
   plugins: [
     new HtmlWebpackPlugin({
       template: './vncrtckeepalive.html',
