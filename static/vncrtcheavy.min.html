@@ -1,0 +1,2526 @@
+<!DOCTYPE html>
+<html lang="en" class="noVNC_loading">
+<head>
+    <!--
+    noVNC example: simple example using default UI
+    Copyright (C) 2019 The noVNC authors
+    noVNC is licensed under the MPL 2.0 (see LICENSE.txt)
+    This file is licensed under the 2-Clause BSD license (see LICENSE.txt).
+
+    Connect parameters are provided in query string:
+        http://example.com/?host=HOST&port=PORT&encrypt=1
+    or the fragment:
+        http://example.com/#host=HOST&port=PORT&encrypt=1
+    -->
+    <title>noVNC</title>
+
+    <link rel="icon" type="image/x-icon" href="app/images/icons/novnc.ico">
+    <meta name="theme-color" content="#313131">
+
+    <!-- Apple iOS Safari settings -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <!-- @2x -->
+    <link rel="apple-touch-icon" sizes="40x40" type="image/png" href="app/images/icons/novnc-ios-40.png">
+    <link rel="apple-touch-icon" sizes="58x58" type="image/png" href="app/images/icons/novnc-ios-58.png">
+    <link rel="apple-touch-icon" sizes="80x80" type="image/png" href="app/images/icons/novnc-ios-80.png">
+    <link rel="apple-touch-icon" sizes="120x120" type="image/png" href="app/images/icons/novnc-ios-120.png">
+    <link rel="apple-touch-icon" sizes="152x152" type="image/png" href="app/images/icons/novnc-ios-152.png">
+    <link rel="apple-touch-icon" sizes="167x167" type="image/png" href="app/images/icons/novnc-ios-167.png">
+    <!-- @3x -->
+    <link rel="apple-touch-icon" sizes="60x60" type="image/png" href="app/images/icons/novnc-ios-60.png">
+    <link rel="apple-touch-icon" sizes="87x87" type="image/png" href="app/images/icons/novnc-ios-87.png">
+    <link rel="apple-touch-icon" sizes="120x120" type="image/png" href="app/images/icons/novnc-ios-120.png">
+    <link rel="apple-touch-icon" sizes="180x180" type="image/png" href="app/images/icons/novnc-ios-180.png">
+
+    <!-- Stylesheets -->
+    <style>/*
+ * noVNC general CSS constant variables
+ * Copyright (C) 2025 The noVNC authors
+ * noVNC is licensed under the MPL 2.0 (see LICENSE.txt)
+ * This file is licensed under the 2-Clause BSD license (see LICENSE.txt).
+ */
+
+/* ---------- COLORS ----------- */
+
+:root {
+    --novnc-grey: rgb(128, 128, 128);
+    --novnc-lightgrey: rgb(192, 192, 192);
+    --novnc-darkgrey: rgb(92, 92, 92);
+
+    /* Transparent to make button colors adapt to the background */
+    --novnc-buttongrey: rgba(192, 192, 192, 0.5);
+
+    --novnc-blue: rgb(110, 132, 163);
+    --novnc-lightblue: rgb(74, 144, 217);
+    --novnc-darkblue: rgb(83, 99, 122);
+
+    --novnc-green: rgb(0, 128, 0);
+    --novnc-yellow: rgb(255, 255, 0);
+}
+
+/* ------ MISC PROPERTIES ------ */
+
+:root {
+    --input-xpadding: 1em;
+}
+</style>
+    <style>/*
+ * noVNC base CSS
+ * Copyright (C) 2019 The noVNC authors
+ * noVNC is licensed under the MPL 2.0 (see LICENSE.txt)
+ * This file is licensed under the 2-Clause BSD license (see LICENSE.txt).
+ */
+
+/*
+ * Z index layers:
+ *
+ * 0: Main screen
+ * 10: Control bar
+ * 50: Transition blocker
+ * 60: Connection popups
+ * 100: Status bar
+ * ...
+ * 1000: Javascript crash
+ * ...
+ * 10000: Max (used for polyfills)
+ */
+
+/*
+ * State variables (set on :root):
+ *
+ * noVNC_loading: Page is still loading
+ * noVNC_connecting: Connecting to server
+ * noVNC_reconnecting: Re-establishing a connection
+ * noVNC_connected: Connected to server (most common state)
+ * noVNC_disconnecting: Disconnecting from server
+ */
+
+:root {
+    font-family: sans-serif;
+    line-height: 1.6;
+}
+
+body {
+    margin:0;
+    padding:0;
+    /*Background image with light grey curve.*/
+    background-color:#494949;
+    background-repeat:no-repeat;
+    background-position:right bottom;
+    height:100%;
+    touch-action: none;
+}
+
+html {
+    height:100%;
+}
+
+.noVNC_only_touch.noVNC_hidden {
+    display: none;
+}
+
+.noVNC_disabled {
+    color: var(--novnc-grey);
+}
+
+/* ----------------------------------------
+ * Spinner
+ * ----------------------------------------
+ */
+
+.noVNC_spinner {
+    position: relative;
+}
+.noVNC_spinner, .noVNC_spinner::before, .noVNC_spinner::after {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    box-shadow: -60px 10px 0 rgba(255, 255, 255, 0);
+    animation: noVNC_spinner 1.0s linear infinite;
+}
+.noVNC_spinner::before {
+    content: "";
+    position: absolute;
+    left: 0px;
+    top: 0px;
+    animation-delay: -0.1s;
+}
+.noVNC_spinner::after {
+    content: "";
+    position: absolute;
+    top: 0px;
+    left: 0px;
+    animation-delay: 0.1s;
+}
+@keyframes noVNC_spinner {
+    0% { box-shadow: -60px 10px 0 rgba(255, 255, 255, 0); width: 20px; }
+    25% { box-shadow: 20px 10px 0 rgba(255, 255, 255, 1); width: 10px; }
+    50% { box-shadow: 60px 10px 0 rgba(255, 255, 255, 0); width: 10px; }
+}
+
+/* ----------------------------------------
+ * WebKit centering hacks
+ * ----------------------------------------
+ */
+
+.noVNC_center {
+    /*
+     * This is a workaround because webkit misrenders transforms and
+     * uses non-integer coordinates, resulting in blurry content.
+     * Ideally we'd use "top: 50%; transform: translateY(-50%);" on
+     * the objects instead.
+     */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+.noVNC_center > * {
+    pointer-events: auto;
+}
+.noVNC_vcenter {
+    display: flex !important;
+    flex-direction: column;
+    justify-content: center;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+    pointer-events: none;
+}
+.noVNC_vcenter > * {
+    pointer-events: auto;
+}
+
+/* ----------------------------------------
+ * Layering
+ * ----------------------------------------
+ */
+
+.noVNC_connect_layer {
+    z-index: 60;
+}
+
+/* ----------------------------------------
+ * Fallback error
+ * ----------------------------------------
+ */
+
+#noVNC_fallback_error {
+    z-index: 1000;
+    visibility: hidden;
+    /* Put a dark background in front of everything but the error,
+       and don't let mouse events pass through */
+    background: rgba(0, 0, 0, 0.8);
+    pointer-events: all;
+}
+#noVNC_fallback_error.noVNC_open {
+    visibility: visible;
+}
+
+#noVNC_fallback_error > div {
+    max-width: calc(100vw - 30px - 30px);
+    max-height: calc(100vh - 30px - 30px);
+    overflow: auto;
+
+    padding: 15px;
+
+    transition: 0.5s ease-in-out;
+
+    transform: translateY(-50px);
+    opacity: 0;
+
+    text-align: center;
+    font-weight: bold;
+    color: #fff;
+
+    border-radius: 12px;
+    box-shadow: 6px 6px 0px rgba(0, 0, 0, 0.5);
+    background: rgba(200,55,55,0.8);
+}
+#noVNC_fallback_error.noVNC_open > div {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+#noVNC_fallback_errormsg {
+    font-weight: normal;
+}
+
+#noVNC_fallback_errormsg .noVNC_message {
+    display: inline-block;
+    text-align: left;
+    font-family: monospace;
+    white-space: pre-wrap;
+}
+
+#noVNC_fallback_error .noVNC_location {
+    font-style: italic;
+    font-size: 0.8em;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+#noVNC_fallback_error .noVNC_stack {
+    padding: 10px;
+    margin: 10px;
+    font-size: 0.8em;
+    text-align: left;
+    font-family: monospace;
+    white-space: pre;
+    border: 1px solid rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.2);
+    overflow: auto;
+}
+
+/* ----------------------------------------
+ * Control bar
+ * ----------------------------------------
+ */
+
+#noVNC_control_bar_anchor {
+    /* The anchor is needed to get z-stacking to work */
+    position: fixed;
+    z-index: 10;
+
+    transition: 0.5s ease-in-out;
+
+    /* Edge misrenders animations wihthout this */
+    transform: translateX(0);
+}
+:root.noVNC_connected #noVNC_control_bar_anchor.noVNC_idle {
+    opacity: 0.8;
+}
+#noVNC_control_bar_anchor.noVNC_right {
+    left: auto;
+    right: 0;
+}
+
+#noVNC_control_bar {
+    position: relative;
+    left: -100%;
+
+    transition: 0.5s ease-in-out;
+
+    background-color: var(--novnc-blue);
+    border-radius: 0 12px 12px 0;
+
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none; /* Disable iOS image long-press popup */
+}
+#noVNC_control_bar.noVNC_open {
+    box-shadow: 6px 6px 0px rgba(0, 0, 0, 0.5);
+    left: 0;
+}
+#noVNC_control_bar::before {
+    /* This extra element is to get a proper shadow */
+    content: "";
+    position: absolute;
+    z-index: -1;
+    height: 100%;
+    width: 30px;
+    left: -30px;
+    transition: box-shadow 0.5s ease-in-out;
+}
+#noVNC_control_bar.noVNC_open::before {
+    box-shadow: 6px 6px 0px rgba(0, 0, 0, 0.5);
+}
+.noVNC_right #noVNC_control_bar {
+    left: 100%;
+    border-radius: 12px 0 0 12px;
+}
+.noVNC_right #noVNC_control_bar.noVNC_open {
+    left: 0;
+}
+.noVNC_right #noVNC_control_bar::before {
+    visibility: hidden;
+}
+
+#noVNC_control_bar_handle {
+    position: absolute;
+    left: -15px;
+    top: 0;
+    transform: translateY(35px);
+    width: calc(100% + 30px);
+    height: 50px;
+    z-index: -1;
+    cursor: pointer;
+    border-radius: 6px;
+    background-color: var(--novnc-darkblue);
+    background-image: url("../images/handle_bg.svg");
+    background-repeat: no-repeat;
+    background-position: right;
+    box-shadow: 3px 3px 0px rgba(0, 0, 0, 0.5);
+}
+#noVNC_control_bar_handle:after {
+    content: "";
+    transition: transform 0.5s ease-in-out;
+    background: url("../images/handle.svg");
+    position: absolute;
+    top: 22px; /* (50px-6px)/2 */
+    right: 5px;
+    width: 5px;
+    height: 6px;
+}
+#noVNC_control_bar.noVNC_open #noVNC_control_bar_handle:after {
+    transform: translateX(1px) rotate(180deg);
+}
+:root:not(.noVNC_connected) #noVNC_control_bar_handle {
+    display: none;
+}
+.noVNC_right #noVNC_control_bar_handle {
+    background-position: left;
+}
+.noVNC_right #noVNC_control_bar_handle:after {
+    left: 5px;
+    right: 0;
+    transform: translateX(1px) rotate(180deg);
+}
+.noVNC_right #noVNC_control_bar.noVNC_open #noVNC_control_bar_handle:after {
+    transform: none;
+}
+/* Larger touch area for the handle, used when a touch screen is available */
+#noVNC_control_bar_handle div {
+    position: absolute;
+    right: -35px;
+    top: 0;
+    width: 50px;
+    height: 100%;
+    display: none;
+}
+@media (any-pointer: coarse) {
+    #noVNC_control_bar_handle div {
+        display: initial;
+    }
+}
+.noVNC_right #noVNC_control_bar_handle div {
+    left: -35px;
+    right: auto;
+}
+
+#noVNC_control_bar > .noVNC_scroll {
+    max-height: 100vh; /* Chrome is buggy with 100% */
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 0 10px;
+}
+
+#noVNC_control_bar > .noVNC_scroll > * {
+    display: block;
+    margin: 10px auto;
+}
+
+/* Control bar hint */
+#noVNC_hint_anchor {
+    position: fixed;
+    right: -50px;
+    left: auto;
+}
+#noVNC_control_bar_anchor.noVNC_right + #noVNC_hint_anchor {
+    left: -50px;
+    right: auto;
+}
+#noVNC_control_bar_hint {
+    position: relative;
+    transform: scale(0);
+    width: 100px;
+    height: 50%;
+    max-height: 600px;
+
+    visibility: hidden;
+    opacity: 0;
+    transition: 0.2s ease-in-out;
+    background: transparent;
+    box-shadow: 0 0 10px black, inset 0 0 10px 10px var(--novnc-darkblue);
+    border-radius: 12px;
+    transition-delay: 0s;
+}
+#noVNC_control_bar_hint.noVNC_active {
+    visibility: visible;
+    opacity: 1;
+    transition-delay: 0.2s;
+    transform: scale(1);
+}
+#noVNC_control_bar_hint.noVNC_notransition {
+    transition: none !important;
+}
+
+/* Control bar buttons */
+#noVNC_control_bar .noVNC_button {
+    min-width: unset;
+    padding: 4px 4px;
+    vertical-align: middle;
+    border:1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    background-color: transparent;
+}
+#noVNC_control_bar .noVNC_button.noVNC_selected {
+    border-color: rgba(0, 0, 0, 0.8);
+    background-color: rgba(0, 0, 0, 0.5);
+}
+#noVNC_control_bar .noVNC_button.noVNC_hidden {
+    display: none !important;
+}
+
+/* Panels */
+.noVNC_panel {
+    transform: translateX(25px);
+
+    transition: 0.5s ease-in-out;
+
+    box-sizing: border-box; /* so max-width don't have to care about padding */
+    max-width: calc(100vw - 75px - 25px); /* minus left and right margins */
+    max-height: 100vh; /* Chrome is buggy with 100% */
+    overflow-x: hidden;
+    overflow-y: auto;
+
+    visibility: hidden;
+    opacity: 0;
+
+    padding: 15px;
+
+    background: #fff;
+    border-radius: 12px;
+    color: #000;
+    border: 2px solid #E0E0E0;
+    box-shadow: 6px 6px 0px rgba(0, 0, 0, 0.5);
+}
+.noVNC_panel.noVNC_open {
+    visibility: visible;
+    opacity: 1;
+    transform: translateX(75px);
+}
+.noVNC_right .noVNC_vcenter {
+    left: auto;
+    right: 0;
+}
+.noVNC_right .noVNC_panel {
+    transform: translateX(-25px);
+}
+.noVNC_right .noVNC_panel.noVNC_open {
+    transform: translateX(-75px);
+}
+
+.noVNC_panel > * {
+    display: block;
+    margin: 10px auto;
+}
+.noVNC_panel > *:first-child {
+    margin-top: 0 !important;
+}
+.noVNC_panel > *:last-child {
+    margin-bottom: 0 !important;
+}
+
+.noVNC_panel hr {
+    border: none;
+    border-top: 1px solid var(--novnc-lightgrey);
+    width: 100%; /* <hr> inside a flexbox will otherwise be 0px wide */
+}
+
+.noVNC_panel label {
+    display: block;
+    white-space: nowrap;
+    margin: 5px;
+}
+@media (max-width: 540px) {
+    /* Allow wrapping on small screens */
+    .noVNC_panel label {
+        white-space: unset;
+    }
+}
+
+.noVNC_panel li {
+    margin: 5px;
+}
+
+.noVNC_panel .noVNC_heading {
+    background-color: var(--novnc-blue);
+    border-radius: 6px;
+    padding: 5px 8px;
+    /* Compensate for padding in image */
+    padding-right: 11px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: white;
+    font-size: 20px;
+    font-weight: bold;
+    white-space: nowrap;
+}
+.noVNC_panel .noVNC_heading img {
+    vertical-align: bottom;
+}
+
+.noVNC_panel form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px
+}
+
+.noVNC_panel .button_row {
+    margin-top: 10px;
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+}
+.noVNC_panel .button_row *:only-child {
+    margin-left: auto; /* Align single buttons to the right */
+}
+
+/* Expanders */
+.noVNC_expander {
+    cursor: pointer;
+}
+.noVNC_expander::before {
+    content: url("../images/expander.svg");
+    display: inline-block;
+    margin-right: 5px;
+    transition: 0.2s ease-in-out;
+}
+.noVNC_expander.noVNC_open::before {
+    transform: rotateZ(90deg);
+}
+.noVNC_expander ~ * {
+    margin: 5px;
+    margin-left: 10px;
+    padding: 5px;
+    background: rgba(0, 0, 0, 0.04);
+    border-radius: 6px;
+}
+.noVNC_expander:not(.noVNC_open) ~ * {
+    display: none;
+}
+
+/* Control bar content */
+
+#noVNC_control_bar .noVNC_logo {
+    font-size: 13px;
+}
+
+.noVNC_logo + hr {
+    /* Remove all but top border */
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+:root:not(.noVNC_connected) #noVNC_view_drag_button {
+    display: none;
+}
+
+/* noVNC Touch Device only buttons */
+:root:not(.noVNC_connected) #noVNC_mobile_buttons {
+    display: none;
+}
+@media not all and (any-pointer: coarse) {
+    /* FIXME: The button for the virtual keyboard is the only button in this
+              group of "mobile buttons". It is bad to assume that no touch
+              devices have physical keyboards available. Hopefully we can get
+              a media query for this:
+              https://github.com/w3c/csswg-drafts/issues/3871 */
+    :root.noVNC_connected #noVNC_mobile_buttons {
+        display: none;
+    }
+}
+
+/* Extra manual keys */
+:root:not(.noVNC_connected) #noVNC_toggle_extra_keys_button {
+    display: none;
+}
+
+#noVNC_modifiers {
+    background-color: var(--novnc-darkgrey);
+    border: none;
+    padding: 10px;
+}
+
+/* Shutdown/Reboot */
+:root:not(.noVNC_connected) #noVNC_power_button {
+    display: none;
+}
+#noVNC_power {
+}
+#noVNC_power_buttons {
+    display: none;
+}
+
+#noVNC_power input[type=button] {
+    width: 100%;
+}
+
+/* Clipboard */
+:root:not(.noVNC_connected) #noVNC_clipboard_button {
+    display: none;
+}
+#noVNC_clipboard_text {
+    width: 360px;
+    min-width: 150px;
+    height: 160px;
+    min-height: 70px;
+
+    box-sizing: border-box;
+    max-width: 100%;
+    /* minus approximate height of title, height of subtitle, and margin */
+    max-height: calc(100vh - 10em - 25px);
+}
+
+/* Settings */
+#noVNC_settings {
+}
+#noVNC_settings ul {
+    list-style: none;
+    padding: 0px;
+}
+#noVNC_settings button,
+#noVNC_settings select,
+#noVNC_settings textarea,
+#noVNC_settings input:not([type=checkbox]):not([type=radio]) {
+    margin-left: 6px;
+    /* Prevent inputs in settings from being too wide */
+    max-width: calc(100% - 6px - var(--input-xpadding) * 2);
+}
+
+#noVNC_setting_port {
+    width: 80px;
+}
+#noVNC_setting_path {
+    width: 100px;
+}
+
+/* Version */
+
+.noVNC_version_wrapper {
+    font-size: small;
+}
+
+.noVNC_version {
+    margin-left: 1rem;
+}
+
+/* Connection controls */
+:root:not(.noVNC_connected) #noVNC_disconnect_button {
+    display: none;
+}
+
+/* ----------------------------------------
+ * Status dialog
+ * ----------------------------------------
+ */
+
+#noVNC_status {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 100;
+    transform: translateY(-100%);
+
+    cursor: pointer;
+
+    transition: 0.5s ease-in-out;
+
+    visibility: hidden;
+    opacity: 0;
+
+    padding: 5px;
+
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-content: center;
+
+    line-height: 1.6;
+    word-wrap: break-word;
+    color: #fff;
+
+    border-bottom: 1px solid rgba(0, 0, 0, 0.9);
+}
+#noVNC_status.noVNC_open {
+    transform: translateY(0);
+    visibility: visible;
+    opacity: 1;
+}
+
+#noVNC_status::before {
+    content: "";
+    display: inline-block;
+    width: 25px;
+    height: 25px;
+    margin-right: 5px;
+}
+
+#noVNC_status.noVNC_status_normal {
+    background: rgba(128,128,128,0.9);
+}
+#noVNC_status.noVNC_status_normal::before {
+    content: url("../images/info.svg") " ";
+}
+#noVNC_status.noVNC_status_error {
+    background: rgba(200,55,55,0.9);
+}
+#noVNC_status.noVNC_status_error::before {
+    content: url("../images/error.svg") " ";
+}
+#noVNC_status.noVNC_status_warn {
+    background: rgba(180,180,30,0.9);
+}
+#noVNC_status.noVNC_status_warn::before {
+    content: url("../images/warning.svg") " ";
+}
+
+/* ----------------------------------------
+ * Connect dialog
+ * ----------------------------------------
+ */
+
+#noVNC_connect_dlg {
+    transition: 0.5s ease-in-out;
+
+    transform: scale(0, 0);
+    visibility: hidden;
+    opacity: 0;
+}
+#noVNC_connect_dlg.noVNC_open {
+    transform: scale(1, 1);
+    visibility: visible;
+    opacity: 1;
+}
+#noVNC_connect_dlg .noVNC_logo {
+    transition: 0.5s ease-in-out;
+    padding: 10px;
+    margin-bottom: 10px;
+
+    font-size: 80px;
+    text-align: center;
+
+    border-radius: 6px;
+}
+@media (max-width: 440px) {
+    #noVNC_connect_dlg {
+        max-width: calc(100vw - 100px);
+    }
+    #noVNC_connect_dlg .noVNC_logo {
+        font-size: calc(25vw - 30px);
+    }
+}
+#noVNC_connect_dlg div {
+    padding: 18px;
+
+    background-color: var(--novnc-darkgrey);
+    border-radius: 12px;
+    text-align: center;
+    font-size: 20px;
+
+    box-shadow: 6px 6px 0px rgba(0, 0, 0, 0.5);
+}
+#noVNC_connect_button {
+    width: 100%;
+    padding: 6px 30px;
+    cursor: pointer;
+    border-color: transparent;
+    border-radius: 12px;
+    background-color: var(--novnc-blue);
+    color: white;
+
+    display: flex;
+    justify-content: center;
+    place-items: center;
+    gap: 4px;
+}
+
+#noVNC_connect_button img {
+    vertical-align: bottom;
+    height: 1.3em;
+}
+
+/* ----------------------------------------
+ * Server verification dialog
+ * ----------------------------------------
+ */
+
+#noVNC_verify_server_dlg {
+    position: relative;
+
+    transform: translateY(-50px);
+}
+#noVNC_verify_server_dlg.noVNC_open {
+    transform: translateY(0);
+}
+#noVNC_fingerprint_block {
+    margin: 10px;
+}
+
+/* ----------------------------------------
+ * Password dialog
+ * ----------------------------------------
+ */
+
+#noVNC_credentials_dlg {
+    position: relative;
+
+    transform: translateY(-50px);
+}
+#noVNC_credentials_dlg.noVNC_open {
+    transform: translateY(0);
+}
+#noVNC_username_block.noVNC_hidden,
+#noVNC_password_block.noVNC_hidden {
+    display: none;
+}
+
+
+/* ----------------------------------------
+ * Main area
+ * ----------------------------------------
+ */
+
+/* Transition screen */
+#noVNC_transition {
+    transition: 0.5s ease-in-out;
+
+    display: flex;
+    opacity: 0;
+    visibility: hidden;
+
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+
+    color: white;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 50;
+
+    /*display: flex;*/
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+}
+:root.noVNC_loading #noVNC_transition,
+:root.noVNC_connecting #noVNC_transition,
+:root.noVNC_disconnecting #noVNC_transition,
+:root.noVNC_reconnecting #noVNC_transition {
+    opacity: 1;
+    visibility: visible;
+}
+:root:not(.noVNC_reconnecting) #noVNC_cancel_reconnect_button {
+    display: none;
+}
+#noVNC_transition_text {
+    font-size: 1.5em;
+}
+
+/* Main container */
+#noVNC_container {
+    width: 100%;
+    height: 100%;
+    background-color: #313131;
+    border-bottom-right-radius: 800px 600px;
+    /*border-top-left-radius: 800px 600px;*/
+
+    /* If selection isn't disabled, long-pressing stuff in the sidebar
+       can accidentally select the container or the canvas. This can
+       happen when attempting to move the handle. */
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+#noVNC_keyboardinput {
+    width: 1px;
+    height: 1px;
+    background-color: #fff;
+    color: #fff;
+    border: 0;
+    position: absolute;
+    left: -40px;
+    z-index: -1;
+    ime-mode: disabled;
+}
+
+/*Default noVNC logo.*/
+/* From: http://fonts.googleapis.com/css?family=Orbitron:700 */
+@font-face {
+    font-family: 'Orbitron';
+    font-style: normal;
+    font-weight: 700;
+    src: local('?'), url('Orbitron700.woff') format('woff'),
+                     url('Orbitron700.ttf') format('truetype');
+}
+
+.noVNC_logo {
+    color: var(--novnc-yellow);
+    font-family: 'Orbitron', 'OrbitronTTF', sans-serif;
+    line-height: 0.9;
+    text-shadow: 0.1em 0.1em 0 black;
+}
+.noVNC_logo span{
+    color: var(--novnc-green);
+}
+
+#noVNC_bell {
+    display: none;
+}
+
+/* ----------------------------------------
+ * Media sizing
+ * ----------------------------------------
+ */
+
+@media screen and (max-width: 640px){
+    #noVNC_logo {
+        font-size: 150px;
+    }
+}
+
+@media screen and (min-width: 321px) and (max-width: 480px) {
+    #noVNC_logo {
+        font-size: 110px;
+    }
+}
+
+@media screen and (max-width: 320px) {
+    #noVNC_logo {
+        font-size: 90px;
+    }
+}
+</style>
+    <style>/*
+ * noVNC general input element CSS
+ * Copyright (C) 2025 The noVNC authors
+ * noVNC is licensed under the MPL 2.0 (see LICENSE.txt)
+ * This file is licensed under the 2-Clause BSD license (see LICENSE.txt).
+ */
+
+/* ------- SHARED BETWEEN INPUT ELEMENTS -------- */
+
+input,
+textarea,
+button,
+select,
+input::file-selector-button {
+    padding: 0.5em var(--input-xpadding);
+    border-radius: 6px;
+    appearance: none;
+    text-overflow: ellipsis;
+
+    /* Respect standard font settings */
+    font: inherit;
+    line-height: 1.6;
+}
+input:disabled,
+textarea:disabled,
+button:disabled,
+select:disabled,
+label[disabled] {
+    opacity: 0.4;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+select:focus-visible,
+input:focus-visible::file-selector-button {
+    outline: 2px solid var(--novnc-lightblue);
+    outline-offset: 1px;
+}
+
+/* ------- TEXT INPUT -------- */
+
+input:not([type]),
+input[type=date],
+input[type=datetime-local],
+input[type=email],
+input[type=month],
+input[type=number],
+input[type=password],
+input[type=search],
+input[type=tel],
+input[type=text],
+input[type=time],
+input[type=url],
+input[type=week],
+textarea {
+    border: 1px solid var(--novnc-lightgrey);
+    /* Account for borders on text inputs, buttons dont have borders */
+    padding: calc(0.5em - 1px) var(--input-xpadding);
+}
+input:not([type]):focus-visible,
+input[type=date]:focus-visible,
+input[type=datetime-local]:focus-visible,
+input[type=email]:focus-visible,
+input[type=month]:focus-visible,
+input[type=number]:focus-visible,
+input[type=password]:focus-visible,
+input[type=search]:focus-visible,
+input[type=tel]:focus-visible,
+input[type=text]:focus-visible,
+input[type=time]:focus-visible,
+input[type=url]:focus-visible,
+input[type=week]:focus-visible,
+textarea:focus-visible {
+    outline-offset: -1px;
+}
+
+textarea {
+    margin: unset; /* Remove Firefox's built in margin */
+    /* Prevent layout from shifting when scrollbars show */
+    scrollbar-gutter: stable;
+    /* Make textareas show at minimum one line. This does not work when
+       using box-sizing border-box, in which case, vertical padding and
+       border width needs to be taken into account. */
+    min-height: 1lh;
+    vertical-align: baseline; /* Firefox gives "text-bottom" by default */
+}
+
+/* ------- NUMBER PICKERS ------- */
+
+/* We can't style the number spinner buttons:
+   https://github.com/w3c/csswg-drafts/issues/8777 */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+    /* Get rid of increase/decrease buttons in WebKit */
+    appearance: none;
+}
+input[type=number] {
+    /* Get rid of increase/decrease buttons in Firefox */
+    appearance: textfield;
+}
+
+/* ------- BUTTON ACTIVATIONS -------- */
+
+/* A color overlay that depends on the activation level. The level can then be
+   set for different states on an element, for example hover and click on a
+   <button>. */
+input, button, select, option,
+input::file-selector-button,
+.button-activations {
+    --button-activation-level: 0;
+    /* Note that CSS variables aren't functions, beware when inheriting */
+    --button-activation-alpha: calc(0.08 * var(--button-activation-level));
+    /* FIXME: We want the image() function instead of the linear-gradient()
+              function below. But it's not supported in the browsers yet. */
+    --button-activation-overlay:
+        linear-gradient(rgba(0, 0, 0, var(--button-activation-alpha))
+        100%, transparent);
+    --button-activation-overlay-light:
+        linear-gradient(rgba(255, 255, 255, calc(0.23 * var(--button-activation-level)))
+        100%, transparent);
+}
+.button-activations {
+    background-image: var(--button-activation-overlay);
+
+    /* Disable Chrome's touch tap highlight to avoid conflicts with overlay */
+    -webkit-tap-highlight-color: transparent;
+}
+/* When we want the light overlay on activations instead.
+   This is best used on elements with darker backgrounds. */
+.button-activations.light-overlay {
+    background-image: var(--button-activation-overlay-light);
+    /* Can't use the normal blend mode since that gives washed out colors. */
+    /* FIXME: For elements with these activation overlays we'd like only
+              the luminosity to change. The proprty "background-blend-mode" set
+              to "luminosity" sounds good, but it doesn't work as intended,
+              see: https://bugzilla.mozilla.org/show_bug.cgi?id=1806417 */
+    background-blend-mode: overlay;
+}
+
+input:hover, button:hover, select:hover, option:hover,
+input::file-selector-button:hover,
+.button-activations:hover {
+    --button-activation-level: 1;
+}
+/* Unfortunately we have to disable the :hover effect on touch devices,
+   otherwise the style lingers after tapping the button. */
+@media (any-pointer: coarse) {
+    input:hover, button:hover, select:hover, option:hover,
+    input::file-selector-button:hover,
+    .button-activations:hover {
+        --button-activation-level: 0;
+    }
+}
+input:active, button:active, select:active, option:active,
+input::file-selector-button:active,
+.button-activations:active {
+    --button-activation-level: 2;
+}
+input:disabled, button:disabled, select:disabled, select:disabled option,
+input:disabled::file-selector-button,
+.button-activations:disabled {
+    --button-activation-level: 0;
+}
+
+/* ------- BUTTONS -------- */
+
+input[type=button],
+input[type=color],
+input[type=image],
+input[type=reset],
+input[type=submit],
+input::file-selector-button,
+button,
+select {
+    min-width: 8em;
+    border: none;
+    color: black;
+    font-weight: bold;
+    background-color: var(--novnc-buttongrey);
+    background-image: var(--button-activation-overlay);
+    cursor: pointer;
+    /* Disable Chrome's touch tap highlight */
+    -webkit-tap-highlight-color: transparent;
+}
+input[type=button]:disabled,
+input[type=color]:disabled,
+input[type=image]:disabled,
+input[type=reset]:disabled,
+input[type=submit]:disabled,
+input:disabled::file-selector-button,
+button:disabled,
+select:disabled {
+    /* See Firefox bug:
+       https://bugzilla.mozilla.org/show_bug.cgi?id=1798304 */
+    cursor: default;
+}
+
+input[type=button],
+input[type=color],
+input[type=reset],
+input[type=submit] {
+    /* Workaround for text-overflow bugs in Firefox and Chromium:
+        https://bugzilla.mozilla.org/show_bug.cgi?id=1800077
+        https://bugs.chromium.org/p/chromium/issues/detail?id=1383144 */
+    overflow: clip;
+}
+
+/* ------- COLOR PICKERS ------- */
+
+input[type=color] {
+    min-width: unset;
+    box-sizing: content-box;
+    width: 1.4em;
+    height: 1.4em;
+}
+input[type=color]::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+/* -webkit-color-swatch & -moz-color-swatch cant be in a selector list:
+   https://bugs.chromium.org/p/chromium/issues/detail?id=1154623 */
+input[type=color]::-webkit-color-swatch {
+    border: none;
+    border-radius: 6px;
+}
+input[type=color]::-moz-color-swatch {
+    border: none;
+    border-radius: 6px;
+}
+
+/* -- SHARED BETWEEN CHECKBOXES, RADIOBUTTONS AND THE TOGGLE CLASS -- */
+
+input[type=radio],
+input[type=checkbox] {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    background-color: var(--novnc-buttongrey);
+    background-image: var(--button-activation-overlay);
+    /* Disable Chrome's touch tap highlight to avoid conflicts with overlay */
+    -webkit-tap-highlight-color: transparent;
+    width: 16px;
+    --checkradio-height: 16px;
+    height: var(--checkradio-height);
+    padding: 0;
+    margin: 0 6px 0 0;
+    /* Don't have transitions for outline in order to be consistent
+       with other elements */
+    transition: all 0.2s, outline-color 0s, outline-offset 0s;
+
+    /* A transparent outline in order to work around a graphical clipping issue
+       in WebKit. See bug: https://bugs.webkit.org/show_bug.cgi?id=256003 */
+    outline: 1px solid transparent;
+    position: relative; /* Since ::before & ::after are absolute positioned */
+
+    /* We want to align with the middle of capital letters, this requires
+       a workaround. The default behavior is to align the bottom of the element
+       on top of the text baseline, this is too far up.
+       We want to push the element down half the difference in height between
+       it and a capital X. In our font, the height of a capital "X" is 0.698em.
+     */
+    vertical-align: calc(0px - (var(--checkradio-height) - 0.698em) / 2);
+    /* FIXME: Could write 1cap instead of 0.698em, but it's only supported in
+              Firefox as of 2023 */
+    /* FIXME: We probably want to use round() here, see bug 8148 */
+}
+input[type=radio]:focus-visible,
+input[type=checkbox]:focus-visible {
+    outline-color: var(--novnc-lightblue);
+}
+input[type=checkbox]::before,
+input[type=checkbox]:not(.toggle)::after,
+input[type=radio]::before,
+input[type=radio]::after {
+    content: "";
+    display: block; /* width & height doesn't work on inline elements */
+    transition: inherit;
+    /* Let's prevent the pseudo-elements from taking up layout space so that
+       the ::before and ::after pseudo-elements can be in the same place. This
+       is also required for vertical-align: baseline to work like we want it to
+       on radio/checkboxes. If the pseudo-elements take up layout space, the
+       baseline of text inside them will be used instead. */
+    position: absolute;
+}
+input[type=checkbox]:not(.toggle)::after,
+input[type=radio]::after {
+    width: 10px;
+    height: 2px;
+    background-color: transparent;
+    border-radius: 2px;
+}
+
+/* ------- CHECKBOXES ------- */
+
+input[type=checkbox]:not(.toggle) {
+    border-radius: 4px;
+}
+input[type=checkbox]:not(.toggle):checked,
+input[type=checkbox]:not(.toggle):indeterminate {
+    background-color: var(--novnc-blue);
+    background-image: var(--button-activation-overlay-light);
+    background-blend-mode: overlay;
+}
+input[type=checkbox]:not(.toggle)::before {
+    width: 25%;
+    height: 55%;
+    border-style: solid;
+    border-color: transparent;
+    border-width: 0 2px 2px 0;
+    border-radius: 1px;
+    transform: translateY(-1px) rotate(35deg);
+}
+input[type=checkbox]:not(.toggle):checked::before {
+    border-color: white;
+}
+input[type=checkbox]:not(.toggle):indeterminate::after {
+    background-color: white;
+}
+
+/* ------- RADIO BUTTONS ------- */
+
+input[type=radio] {
+    border-radius: 50%;
+    border: 1px solid transparent; /* To ensure a smooth transition */
+}
+input[type=radio]:checked {
+    border: 4px solid var(--novnc-blue);
+    background-color: white;
+    /* button-activation-overlay should be removed from the radio
+       element to not interfere with button-activation-overlay-light
+       that is set on the ::before element. */
+    background-image: none;
+}
+input[type=radio]::before {
+    width: inherit;
+    height: inherit;
+    border-radius: inherit;
+    /* We can achieve the highlight overlay effect on border colors by
+       setting button-activation-overlay-light on an element that stays
+       on top (z-axis) of the element with a border. */
+    background-image: var(--button-activation-overlay-light);
+    mix-blend-mode: overlay;
+    opacity: 0;
+}
+input[type=radio]:checked::before {
+    opacity: 1;
+}
+input[type=radio]:indeterminate::after {
+    background-color: black;
+}
+
+/* ------- TOGGLE SWITCHES ------- */
+
+/* These are meant to be used instead of checkboxes in some cases. If all of
+   the following critera are true you should use a toggle switch:
+
+    * The choice is a simple ON/OFF or ENABLE/DISABLE
+    * The choice doesn't give the feeling of "I agree" or "I confirm"
+    * There are not multiple related & grouped options
+ */
+
+input[type=checkbox].toggle {
+    display: inline-block;
+    --checkradio-height: 18px; /* Height value used in calc, see above */
+    width: 31px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    border-radius: 9px;
+}
+input[type=checkbox].toggle:disabled {
+    cursor: default;
+}
+input[type=checkbox].toggle:indeterminate {
+    background-color: var(--novnc-buttongrey);
+    background-image: var(--button-activation-overlay);
+}
+input[type=checkbox].toggle:checked {
+    background-color: var(--novnc-blue);
+    background-image: var(--button-activation-overlay-light);
+    background-blend-mode: overlay;
+}
+input[type=checkbox].toggle::before {
+    --circle-diameter: 10px;
+    --circle-offset: 4px;
+    width: var(--circle-diameter);
+    height: var(--circle-diameter);
+    top: var(--circle-offset);
+    left: var(--circle-offset);
+    background: white;
+    border-radius: 6px;
+}
+input[type=checkbox].toggle:checked::before {
+    left: calc(100% - var(--circle-offset) - var(--circle-diameter));
+}
+input[type=checkbox].toggle:indeterminate::before {
+    left: calc(50% - var(--circle-diameter) / 2);
+}
+
+/* ------- RANGE SLIDERS ------- */
+
+input[type=range] {
+    border: unset;
+    border-radius: 8px;
+    height: 15px;
+    padding: 0;
+    background: transparent;
+    /* Needed to get properly rounded corners on -moz-range-progress
+       when the thumb is all the way to the right. Without overflow
+       hidden, the pointy edges of the progress track shows to the
+       right of the thumb. */
+    overflow: hidden;
+}
+@supports selector(::-webkit-slider-thumb) {
+    input[type=range] {
+        /* Needs a fixed width to match clip-path */
+        width: 125px;
+        /* overflow: hidden is not ideal for hiding the left part of the box
+           shadow of -webkit-slider-thumb since it doesn't match the smaller
+           border-radius of the progress track. The below clip-path has two
+           circular sides to make the ends of the track have correctly rounded
+           corners. The clip path shape looks something like this:
+
+                  +-------------------------------+
+              /---|                               |---\
+             |                                         |
+              \---|                               |---/
+                  +-------------------------------+
+
+           The larger middle part of the clip path is made to have room for the
+           thumb. By using margins on the track, we prevent the thumb from
+           touching the ends of the track.
+         */
+        clip-path: path(' \
+         M 4.5 3 \
+         L 4.5 0 \
+         L 120.5 0 \
+         L 120.5 3 \
+         A 1 1 0 0 1 120.5 12 \
+         L 120.5 15 \
+         L 4.5 15 \
+         L 4.5 12 \
+         A 1 1 0 0 1 4.5 3 \
+        ');
+    }
+}
+input[type=range]:hover {
+    cursor: grab;
+}
+input[type=range]:active {
+    cursor: grabbing;
+}
+input[type=range]:disabled {
+    cursor: default;
+}
+input[type=range]:focus-visible {
+    clip-path: none; /* Otherwise it hides the outline */
+}
+/* -webkit-slider.. & -moz-range.. cant be in selector lists:
+   https://bugs.chromium.org/p/chromium/issues/detail?id=1154623 */
+input[type=range]::-webkit-slider-runnable-track {
+    background-color: var(--novnc-buttongrey);
+    height: 7px;
+    border-radius: 4px;
+    margin: 0 3px;
+}
+input[type=range]::-moz-range-track {
+    background-color: var(--novnc-buttongrey);
+    height: 7px;
+    border-radius: 4px;
+}
+input[type=range]::-moz-range-progress {
+    background-color: var(--novnc-blue);
+    height: 9px;
+    /* Needs rounded corners only on the left side. Otherwise the rounding of
+       the progress track starts before the thumb, when the thumb is close to
+       the left edge. */
+    border-radius: 5px 0 0 5px;
+}
+input[type=range]::-webkit-slider-thumb {
+    appearance: none;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background-color: white;
+    background-image: var(--button-activation-overlay);
+    /* Disable Chrome's touch tap highlight to avoid conflicts with overlay */
+    -webkit-tap-highlight-color: transparent;
+    border: 3px solid var(--novnc-blue);
+    margin-top: -4px; /* (track height / 2) - (thumb height /2) */
+
+    /* Since there is no way to style the left part of the range track in
+       webkit, we add a large shadow (1000px wide) to the left of the thumb and
+       then crop it with a clip-path shaped like this:
+                              ___
+        +-------------------/     \
+        |      progress     |Thumb|
+        +-------------------\ ___ /
+
+        The large left part of the shadow is clipped by another clip-path on on
+        the main range input element. */
+    /* FIXME: We can remove the box shadow workaround when this is standardized:
+              https://github.com/w3c/csswg-drafts/issues/4410 */
+
+    box-shadow: calc(-100vw - 8px) 0 0 100vw var(--novnc-blue);
+    clip-path: path(' \
+     M -1000 3 \
+     L 3 3 \
+     L 15 7.5 \
+     A 1 1 0 0 1 0 7.5 \
+     A 1 1 0 0 1 15 7.5 \
+     L 3 12 \
+     L -1000 12 Z \
+    ');
+}
+input[type=range]::-moz-range-thumb {
+    appearance: none;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    box-sizing: border-box;
+    background-color: white;
+    background-image: var(--button-activation-overlay);
+    border: 3px solid var(--novnc-blue);
+    margin-top: -7px;
+}
+
+/* ------- FILE CHOOSERS ------- */
+
+input[type=file] {
+    background-image: none;
+    border: none;
+}
+input::file-selector-button {
+    margin-right: 6px;
+}
+input[type=file]:focus-visible {
+    outline: none; /* We outline the button instead of the entire element */
+}
+
+/* ------- SELECT BUTTONS ------- */
+
+select {
+    --select-arrow: url('data:image/svg+xml;utf8, \
+        <svg width="11" height="6" version="1.1" viewBox="0 0 11 6" \
+             xmlns="http://www.w3.org/2000/svg"> \
+            <path d="m10.5.5-5 5-5-5" fill="none" \
+                  stroke="black" stroke-width="1.5" \
+                  stroke-linecap="round" stroke-linejoin="round"/> \
+        </svg>');
+
+    /* FIXME: A bug in Firefox, requires a workaround for the background:
+              https://bugzilla.mozilla.org/show_bug.cgi?id=1810958 */
+    /* The dropdown list will show the select element's background above and
+       below the options in Firefox. We want the entire dropdown to be white. */
+    background-color: white;
+    /* However, we don't want the select element to actually show a white
+       background, so let's place a gradient above it with the color we want. */
+    --grey-background: linear-gradient(var(--novnc-buttongrey) 100%,
+                                       transparent);
+    background-image:
+        var(--select-arrow),
+        var(--button-activation-overlay),
+        var(--grey-background);
+    background-position: calc(100% - var(--input-xpadding)), left top, left top;
+    background-repeat: no-repeat;
+    padding-right: calc(2*var(--input-xpadding) + 11px);
+    overflow: auto;
+}
+/* FIXME: :active isn't set when the <select> is opened in Firefox:
+          https://bugzilla.mozilla.org/show_bug.cgi?id=1805406 */
+select:active {
+    /* Rotated arrow */
+    background-image: url('data:image/svg+xml;utf8, \
+        <svg width="11" height="6" version="1.1" viewBox="0 0 11 6" \
+             xmlns="http://www.w3.org/2000/svg" transform="rotate(180)"> \
+            <path d="m10.5.5-5 5-5-5" fill="none" \
+                  stroke="black" stroke-width="1.5" \
+                  stroke-linecap="round" stroke-linejoin="round"/> \
+        </svg>'),
+        var(--button-activation-overlay),
+        var(--grey-background);
+}
+select:disabled {
+    background-image:
+        var(--select-arrow),
+        var(--grey-background);
+}
+/* Note that styling for <option> doesn't work in all browsers
+   since its often drawn directly by the OS. We are generally very
+   limited in what we can change here. */
+option {
+    /* Prevent Chrome from inheriting background-color from the <select> */
+    background-color: white;
+    color: black;
+    font-weight: normal;
+    background-image: var(--button-activation-overlay);
+}
+option:checked {
+    background-color: var(--novnc-lightgrey);
+}
+/* Change the look when the <select> isn't used as a dropdown. When "size"
+   or "multiple" are set, these elements behaves more like lists. */
+select[size]:not([size="1"]), select[multiple] {
+    background-color: white;
+    background-image: unset; /* Don't show the arrow and other gradients */
+    border: 1px solid var(--novnc-lightgrey);
+    padding: 0;
+    font-weight: normal; /* Without this, options get bold font in WebKit. */
+
+    /* As an exception to the "list"-look, multi-selects in Chrome on Android,
+       and Safari on iOS, are unfortunately designed to be shown as a single
+       line. We can mitigate this inconsistency by at least fixing the height
+       here. By setting a min-height that matches other input elements, it
+       doesn't look too much out of place:
+         (1px border * 2) + (6.5px padding * 2) + 24px line-height = 39px */
+    min-height: 39px;
+}
+select[size]:not([size="1"]):focus-visible,
+select[multiple]:focus-visible {
+    /* Text input style focus-visible highlight */
+    outline-offset: -1px;
+}
+select[size]:not([size="1"]) option, select[multiple] option {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 4px var(--input-xpadding);
+}
+</style>
+
+    <!-- Images that will later appear via CSS -->
+    <link rel="preload" as="image" href="app/images/info.svg">
+    <link rel="preload" as="image" href="app/images/error.svg">
+    <link rel="preload" as="image" href="app/images/warning.svg">
+
+    <!-- WebRTC bundle -->
+    <script>(()=>{var mn=Object.create;var dt=Object.defineProperty;var $n=Object.getOwnPropertyDescriptor;var En=Object.getOwnPropertyNames;var Bn=Object.getPrototypeOf,Cn=Object.prototype.hasOwnProperty;var we=(o,r)=>()=>(r||o((r={exports:{}}).exports,r),r.exports);var vn=(o,r,n,l)=>{if(r&&typeof r=="object"||typeof r=="function")for(let a of En(r))!Cn.call(o,a)&&a!==n&&dt(o,a,{get:()=>r[a],enumerable:!(l=$n(r,a))||l.enumerable});return o};var ur=(o,r,n)=>(n=o!=null?mn(Bn(o)):{},vn(r||!o||!o.__esModule?dt(n,"default",{value:o,enumerable:!0}):n,o));var wt=we((gs,yt)=>{yt.exports=(function(){function o(l,a){function t(){this.constructor=l}t.prototype=a.prototype,l.prototype=new t}function r(l,a,t,p,$,C){this.message=l,this.expected=a,this.found=t,this.offset=p,this.line=$,this.column=C,this.name="SyntaxError"}o(r,Error);function n(l){var a=arguments.length>1?arguments[1]:{},t={},p={start:Zr},$=Zr,C=[],b=function(){return pt},u=t,v="#",W={type:"literal",value:"#",description:'"#"'},M=void 0,O={type:"any",description:"any character"},Y="[",fe={type:"literal",value:"[",description:'"["'},te="]",I={type:"literal",value:"]",description:'"]"'},_=function(e){fr(Z("ObjectPath",e,J,V))},S=function(e){fr(Z("ArrayPath",e,J,V))},T=function(e,s){return e.concat(s)},Q=function(e){return[e]},H=function(e){return e},K=".",L={type:"literal",value:".",description:'"."'},D="=",X={type:"literal",value:"=",description:'"="'},ue=function(e,s){fr(Z("Assign",s,J,V,e))},_e=function(e){return e.join("")},Ue=function(e){return e.value},F='"""',ie={type:"literal",value:'"""',description:'"\\"\\"\\""'},j=null,ce=function(e){return Z("String",e.join(""),J,V)},ge='"',Ee={type:"literal",value:'"',description:'"\\""'},Be="'''",Ke={type:"literal",value:"'''",description:`"'''"`},Xe="'",ze={type:"literal",value:"'",description:`"'"`},Qe=function(e){return e},Vt=function(e){return e},Zt="\\",Yt={type:"literal",value:"\\",description:'"\\\\"'},Kt=function(){return""},Xt="e",zt={type:"literal",value:"e",description:'"e"'},Qt="E",ei={type:"literal",value:"E",description:'"E"'},ri=function(e,s){return Z("Float",parseFloat(e+"e"+s),J,V)},ti=function(e){return Z("Float",parseFloat(e),J,V)},er="+",rr={type:"literal",value:"+",description:'"+"'},vr=function(e){return e.join("")},Se="-",Te={type:"literal",value:"-",description:'"-"'},Ir=function(e){return"-"+e.join("")},ii=function(e){return Z("Integer",parseInt(e,10),J,V)},Pr="true",ni={type:"literal",value:"true",description:'"true"'},si=function(){return Z("Boolean",!0,J,V)},Fr="false",oi={type:"literal",value:"false",description:'"false"'},li=function(){return Z("Boolean",!1,J,V)},fi=function(){return Z("Array",[],J,V)},ci=function(e){return Z("Array",e?[e]:[],J,V)},ui=function(e){return Z("Array",e,J,V)},ai=function(e,s){return Z("Array",e.concat(s),J,V)},br=function(e){return e},_r=",",Ur={type:"literal",value:",",description:'","'},hi="{",pi={type:"literal",value:"{",description:'"{"'},gi="}",di={type:"literal",value:"}",description:'"}"'},yi=function(e){return Z("InlineTable",e,J,V)},Sr=function(e,s){return Z("InlineTableValue",s,J,V,e)},wi=function(e){return"."+e},xi=function(e){return e.join("")},Re=":",ke={type:"literal",value:":",description:'":"'},Tr=function(e){return e.join("")},Rr="T",kr={type:"literal",value:"T",description:'"T"'},Ai="Z",mi={type:"literal",value:"Z",description:'"Z"'},$i=function(e,s){return Z("Date",new Date(e+"T"+s+"Z"),J,V)},Ei=function(e,s){return Z("Date",new Date(e+"T"+s),J,V)},Bi=/^[ \t]/,Ci={type:"class",value:"[ \\t]",description:"[ \\t]"},Mr=`
+`,Dr={type:"literal",value:`
+`,description:'"\\n"'},vi="\r",Ii={type:"literal",value:"\r",description:'"\\r"'},Pi=/^[0-9a-f]/i,Fi={type:"class",value:"[0-9a-f]i",description:"[0-9a-f]i"},bi=/^[0-9]/,_i={type:"class",value:"[0-9]",description:"[0-9]"},Ui="_",Si={type:"literal",value:"_",description:'"_"'},Ti=function(){return""},Ri=/^[A-Za-z0-9_\-]/,ki={type:"class",value:"[A-Za-z0-9_\\-]",description:"[A-Za-z0-9_\\-]"},Mi=function(e){return e.join("")},Lr='\\"',Di={type:"literal",value:'\\"',description:'"\\\\\\""'},Li=function(){return'"'},Nr="\\\\",Ni={type:"literal",value:"\\\\",description:'"\\\\\\\\"'},Oi=function(){return"\\"},Or="\\b",ji={type:"literal",value:"\\b",description:'"\\\\b"'},qi=function(){return"\b"},jr="\\t",Wi={type:"literal",value:"\\t",description:'"\\\\t"'},Hi=function(){return"	"},qr="\\n",Gi={type:"literal",value:"\\n",description:'"\\\\n"'},Ji=function(){return`
+`},Wr="\\f",Vi={type:"literal",value:"\\f",description:'"\\\\f"'},Zi=function(){return"\f"},Hr="\\r",Yi={type:"literal",value:"\\r",description:'"\\\\r"'},Ki=function(){return"\r"},Gr="\\U",Xi={type:"literal",value:"\\U",description:'"\\\\U"'},Jr=function(e){return xn(e.join(""))},Vr="\\u",zi={type:"literal",value:"\\u",description:'"\\\\u"'},i=0,E=0,Me=0,tr={line:1,column:1,seenCR:!1},je=0,ir=[],w=0,x={},qe;if("startRule"in a){if(!(a.startRule in p))throw new Error(`Can't start parsing from rule "`+a.startRule+'".');$=p[a.startRule]}function cs(){return l.substring(E,i)}function us(){return E}function J(){return nr(E).line}function V(){return nr(E).column}function as(e){throw sr(null,[{type:"other",description:e}],E)}function hs(e){throw sr(e,null,E)}function nr(e){function s(f,c,h){var g,y;for(g=c;g<h;g++)y=l.charAt(g),y===`
+`?(f.seenCR||f.line++,f.column=1,f.seenCR=!1):y==="\r"||y==="\u2028"||y==="\u2029"?(f.line++,f.column=1,f.seenCR=!0):(f.column++,f.seenCR=!1)}return Me!==e&&(Me>e&&(Me=0,tr={line:1,column:1,seenCR:!1}),s(tr,Me,e),Me=e),tr}function A(e){i<je||(i>je&&(je=i,ir=[]),ir.push(e))}function sr(e,s,f){function c(m){var P=1;for(m.sort(function(k,U){return k.description<U.description?-1:k.description>U.description?1:0});P<m.length;)m[P-1]===m[P]?m.splice(P,1):P++}function h(m,P){function k(ve){function de(re){return re.charCodeAt(0).toString(16).toUpperCase()}return ve.replace(/\\/g,"\\\\").replace(/"/g,'\\"').replace(/\x08/g,"\\b").replace(/\t/g,"\\t").replace(/\n/g,"\\n").replace(/\f/g,"\\f").replace(/\r/g,"\\r").replace(/[\x00-\x07\x0B\x0E\x0F]/g,function(re){return"\\x0"+de(re)}).replace(/[\x10-\x1F\x80-\xFF]/g,function(re){return"\\x"+de(re)}).replace(/[\u0180-\u0FFF]/g,function(re){return"\\u0"+de(re)}).replace(/[\u1080-\uFFFF]/g,function(re){return"\\u"+de(re)})}var U=new Array(m.length),N,q,ee;for(ee=0;ee<m.length;ee++)U[ee]=m[ee].description;return N=m.length>1?U.slice(0,-1).join(", ")+" or "+U[m.length-1]:U[0],q=P?'"'+k(P)+'"':"end of input","Expected "+N+" but "+q+" found."}var g=nr(f),y=f<l.length?l.charAt(f):null;return s!==null&&c(s),new r(e!==null?e:h(s,y),s,y,f,g.line,g.column)}function Zr(){var e,s,f,c=i*49+0,h=x[c];if(h)return i=h.nextPos,h.result;for(e=i,s=[],f=Yr();f!==t;)s.push(f),f=Yr();return s!==t&&(E=e,s=b()),e=s,x[c]={nextPos:i,result:e},e}function Yr(){var e,s,f,c,h,g,y,m=i*49+1,P=x[m];if(P)return i=P.nextPos,P.result;for(e=i,s=[],f=B();f!==t;)s.push(f),f=B();if(s!==t)if(f=Qi(),f!==t){for(c=[],h=B();h!==t;)c.push(h),h=B();if(c!==t){for(h=[],g=We();g!==t;)h.push(g),g=We();if(h!==t){if(g=[],y=se(),y!==t)for(;y!==t;)g.push(y),y=se();else g=u;g===t&&(g=Ge()),g!==t?(s=[s,f,c,h,g],e=s):(i=e,e=u)}else i=e,e=u}else i=e,e=u}else i=e,e=u;else i=e,e=u;if(e===t){if(e=i,s=[],f=B(),f!==t)for(;f!==t;)s.push(f),f=B();else s=u;if(s!==t){if(f=[],c=se(),c!==t)for(;c!==t;)f.push(c),c=se();else f=u;f===t&&(f=Ge()),f!==t?(s=[s,f],e=s):(i=e,e=u)}else i=e,e=u;e===t&&(e=se())}return x[m]={nextPos:i,result:e},e}function Qi(){var e,s=i*49+2,f=x[s];return f?(i=f.nextPos,f.result):(e=We(),e===t&&(e=en(),e===t&&(e=rn(),e===t&&(e=tn()))),x[s]={nextPos:i,result:e},e)}function We(){var e,s,f,c,h,g,y=i*49+3,m=x[y];if(m)return i=m.nextPos,m.result;if(e=i,l.charCodeAt(i)===35?(s=v,i++):(s=t,w===0&&A(W)),s!==t){for(f=[],c=i,h=i,w++,g=se(),g===t&&(g=Ge()),w--,g===t?h=M:(i=h,h=u),h!==t?(l.length>i?(g=l.charAt(i),i++):(g=t,w===0&&A(O)),g!==t?(h=[h,g],c=h):(i=c,c=u)):(i=c,c=u);c!==t;)f.push(c),c=i,h=i,w++,g=se(),g===t&&(g=Ge()),w--,g===t?h=M:(i=h,h=u),h!==t?(l.length>i?(g=l.charAt(i),i++):(g=t,w===0&&A(O)),g!==t?(h=[h,g],c=h):(i=c,c=u)):(i=c,c=u);f!==t?(s=[s,f],e=s):(i=e,e=u)}else i=e,e=u;return x[y]={nextPos:i,result:e},e}function en(){var e,s,f,c,h,g,y=i*49+4,m=x[y];if(m)return i=m.nextPos,m.result;if(e=i,l.charCodeAt(i)===91?(s=Y,i++):(s=t,w===0&&A(fe)),s!==t){for(f=[],c=B();c!==t;)f.push(c),c=B();if(f!==t)if(c=Kr(),c!==t){for(h=[],g=B();g!==t;)h.push(g),g=B();h!==t?(l.charCodeAt(i)===93?(g=te,i++):(g=t,w===0&&A(I)),g!==t?(E=e,s=_(c),e=s):(i=e,e=u)):(i=e,e=u)}else i=e,e=u;else i=e,e=u}else i=e,e=u;return x[y]={nextPos:i,result:e},e}function rn(){var e,s,f,c,h,g,y,m,P=i*49+5,k=x[P];if(k)return i=k.nextPos,k.result;if(e=i,l.charCodeAt(i)===91?(s=Y,i++):(s=t,w===0&&A(fe)),s!==t)if(l.charCodeAt(i)===91?(f=Y,i++):(f=t,w===0&&A(fe)),f!==t){for(c=[],h=B();h!==t;)c.push(h),h=B();if(c!==t)if(h=Kr(),h!==t){for(g=[],y=B();y!==t;)g.push(y),y=B();g!==t?(l.charCodeAt(i)===93?(y=te,i++):(y=t,w===0&&A(I)),y!==t?(l.charCodeAt(i)===93?(m=te,i++):(m=t,w===0&&A(I)),m!==t?(E=e,s=S(h),e=s):(i=e,e=u)):(i=e,e=u)):(i=e,e=u)}else i=e,e=u;else i=e,e=u}else i=e,e=u;else i=e,e=u;return x[P]={nextPos:i,result:e},e}function Kr(){var e,s,f,c=i*49+6,h=x[c];if(h)return i=h.nextPos,h.result;if(e=i,s=[],f=zr(),f!==t)for(;f!==t;)s.push(f),f=zr();else s=u;return s!==t?(f=Xr(),f!==t?(E=e,s=T(s,f),e=s):(i=e,e=u)):(i=e,e=u),e===t&&(e=i,s=Xr(),s!==t&&(E=e,s=Q(s)),e=s),x[c]={nextPos:i,result:e},e}function Xr(){var e,s,f,c,h,g=i*49+7,y=x[g];if(y)return i=y.nextPos,y.result;for(e=i,s=[],f=B();f!==t;)s.push(f),f=B();if(s!==t)if(f=De(),f!==t){for(c=[],h=B();h!==t;)c.push(h),h=B();c!==t?(E=e,s=H(f),e=s):(i=e,e=u)}else i=e,e=u;else i=e,e=u;if(e===t){for(e=i,s=[],f=B();f!==t;)s.push(f),f=B();if(s!==t)if(f=or(),f!==t){for(c=[],h=B();h!==t;)c.push(h),h=B();c!==t?(E=e,s=H(f),e=s):(i=e,e=u)}else i=e,e=u;else i=e,e=u}return x[g]={nextPos:i,result:e},e}function zr(){var e,s,f,c,h,g,y,m=i*49+8,P=x[m];if(P)return i=P.nextPos,P.result;for(e=i,s=[],f=B();f!==t;)s.push(f),f=B();if(s!==t)if(f=De(),f!==t){for(c=[],h=B();h!==t;)c.push(h),h=B();if(c!==t)if(l.charCodeAt(i)===46?(h=K,i++):(h=t,w===0&&A(L)),h!==t){for(g=[],y=B();y!==t;)g.push(y),y=B();g!==t?(E=e,s=H(f),e=s):(i=e,e=u)}else i=e,e=u;else i=e,e=u}else i=e,e=u;else i=e,e=u;if(e===t){for(e=i,s=[],f=B();f!==t;)s.push(f),f=B();if(s!==t)if(f=or(),f!==t){for(c=[],h=B();h!==t;)c.push(h),h=B();if(c!==t)if(l.charCodeAt(i)===46?(h=K,i++):(h=t,w===0&&A(L)),h!==t){for(g=[],y=B();y!==t;)g.push(y),y=B();g!==t?(E=e,s=H(f),e=s):(i=e,e=u)}else i=e,e=u;else i=e,e=u}else i=e,e=u;else i=e,e=u}return x[m]={nextPos:i,result:e},e}function tn(){var e,s,f,c,h,g,y=i*49+9,m=x[y];if(m)return i=m.nextPos,m.result;if(e=i,s=De(),s!==t){for(f=[],c=B();c!==t;)f.push(c),c=B();if(f!==t)if(l.charCodeAt(i)===61?(c=D,i++):(c=t,w===0&&A(X)),c!==t){for(h=[],g=B();g!==t;)h.push(g),g=B();h!==t?(g=Ce(),g!==t?(E=e,s=ue(s,g),e=s):(i=e,e=u)):(i=e,e=u)}else i=e,e=u;else i=e,e=u}else i=e,e=u;if(e===t)if(e=i,s=or(),s!==t){for(f=[],c=B();c!==t;)f.push(c),c=B();if(f!==t)if(l.charCodeAt(i)===61?(c=D,i++):(c=t,w===0&&A(X)),c!==t){for(h=[],g=B();g!==t;)h.push(g),g=B();h!==t?(g=Ce(),g!==t?(E=e,s=ue(s,g),e=s):(i=e,e=u)):(i=e,e=u)}else i=e,e=u;else i=e,e=u}else i=e,e=u;return x[y]={nextPos:i,result:e},e}function De(){var e,s,f,c=i*49+10,h=x[c];if(h)return i=h.nextPos,h.result;if(e=i,s=[],f=at(),f!==t)for(;f!==t;)s.push(f),f=at();else s=u;return s!==t&&(E=e,s=_e(s)),e=s,x[c]={nextPos:i,result:e},e}function or(){var e,s,f=i*49+11,c=x[f];return c?(i=c.nextPos,c.result):(e=i,s=Qr(),s!==t&&(E=e,s=Ue(s)),e=s,e===t&&(e=i,s=et(),s!==t&&(E=e,s=Ue(s)),e=s),x[f]={nextPos:i,result:e},e)}function Ce(){var e,s=i*49+12,f=x[s];return f?(i=f.nextPos,f.result):(e=nn(),e===t&&(e=dn(),e===t&&(e=fn(),e===t&&(e=cn(),e===t&&(e=un(),e===t&&(e=an(),e===t&&(e=hn())))))),x[s]={nextPos:i,result:e},e)}function nn(){var e,s=i*49+13,f=x[s];return f?(i=f.nextPos,f.result):(e=sn(),e===t&&(e=Qr(),e===t&&(e=on(),e===t&&(e=et()))),x[s]={nextPos:i,result:e},e)}function sn(){var e,s,f,c,h,g=i*49+14,y=x[g];if(y)return i=y.nextPos,y.result;if(e=i,l.substr(i,3)===F?(s=F,i+=3):(s=t,w===0&&A(ie)),s!==t)if(f=se(),f===t&&(f=j),f!==t){for(c=[],h=it();h!==t;)c.push(h),h=it();c!==t?(l.substr(i,3)===F?(h=F,i+=3):(h=t,w===0&&A(ie)),h!==t?(E=e,s=ce(c),e=s):(i=e,e=u)):(i=e,e=u)}else i=e,e=u;else i=e,e=u;return x[g]={nextPos:i,result:e},e}function Qr(){var e,s,f,c,h=i*49+15,g=x[h];if(g)return i=g.nextPos,g.result;if(e=i,l.charCodeAt(i)===34?(s=ge,i++):(s=t,w===0&&A(Ee)),s!==t){for(f=[],c=rt();c!==t;)f.push(c),c=rt();f!==t?(l.charCodeAt(i)===34?(c=ge,i++):(c=t,w===0&&A(Ee)),c!==t?(E=e,s=ce(f),e=s):(i=e,e=u)):(i=e,e=u)}else i=e,e=u;return x[h]={nextPos:i,result:e},e}function on(){var e,s,f,c,h,g=i*49+16,y=x[g];if(y)return i=y.nextPos,y.result;if(e=i,l.substr(i,3)===Be?(s=Be,i+=3):(s=t,w===0&&A(Ke)),s!==t)if(f=se(),f===t&&(f=j),f!==t){for(c=[],h=nt();h!==t;)c.push(h),h=nt();c!==t?(l.substr(i,3)===Be?(h=Be,i+=3):(h=t,w===0&&A(Ke)),h!==t?(E=e,s=ce(c),e=s):(i=e,e=u)):(i=e,e=u)}else i=e,e=u;else i=e,e=u;return x[g]={nextPos:i,result:e},e}function et(){var e,s,f,c,h=i*49+17,g=x[h];if(g)return i=g.nextPos,g.result;if(e=i,l.charCodeAt(i)===39?(s=Xe,i++):(s=t,w===0&&A(ze)),s!==t){for(f=[],c=tt();c!==t;)f.push(c),c=tt();f!==t?(l.charCodeAt(i)===39?(c=Xe,i++):(c=t,w===0&&A(ze)),c!==t?(E=e,s=ce(f),e=s):(i=e,e=u)):(i=e,e=u)}else i=e,e=u;return x[h]={nextPos:i,result:e},e}function rt(){var e,s,f,c=i*49+18,h=x[c];return h?(i=h.nextPos,h.result):(e=ht(),e===t&&(e=i,s=i,w++,l.charCodeAt(i)===34?(f=ge,i++):(f=t,w===0&&A(Ee)),w--,f===t?s=M:(i=s,s=u),s!==t?(l.length>i?(f=l.charAt(i),i++):(f=t,w===0&&A(O)),f!==t?(E=e,s=Qe(f),e=s):(i=e,e=u)):(i=e,e=u)),x[c]={nextPos:i,result:e},e)}function tt(){var e,s,f,c=i*49+19,h=x[c];return h?(i=h.nextPos,h.result):(e=i,s=i,w++,l.charCodeAt(i)===39?(f=Xe,i++):(f=t,w===0&&A(ze)),w--,f===t?s=M:(i=s,s=u),s!==t?(l.length>i?(f=l.charAt(i),i++):(f=t,w===0&&A(O)),f!==t?(E=e,s=Qe(f),e=s):(i=e,e=u)):(i=e,e=u),x[c]={nextPos:i,result:e},e)}function it(){var e,s,f,c=i*49+20,h=x[c];return h?(i=h.nextPos,h.result):(e=ht(),e===t&&(e=ln(),e===t&&(e=i,s=i,w++,l.substr(i,3)===F?(f=F,i+=3):(f=t,w===0&&A(ie)),w--,f===t?s=M:(i=s,s=u),s!==t?(l.length>i?(f=l.charAt(i),i++):(f=t,w===0&&A(O)),f!==t?(E=e,s=Vt(f),e=s):(i=e,e=u)):(i=e,e=u))),x[c]={nextPos:i,result:e},e)}function ln(){var e,s,f,c,h,g=i*49+21,y=x[g];if(y)return i=y.nextPos,y.result;if(e=i,l.charCodeAt(i)===92?(s=Zt,i++):(s=t,w===0&&A(Yt)),s!==t)if(f=se(),f!==t){for(c=[],h=ut();h!==t;)c.push(h),h=ut();c!==t?(E=e,s=Kt(),e=s):(i=e,e=u)}else i=e,e=u;else i=e,e=u;return x[g]={nextPos:i,result:e},e}function nt(){var e,s,f,c=i*49+22,h=x[c];return h?(i=h.nextPos,h.result):(e=i,s=i,w++,l.substr(i,3)===Be?(f=Be,i+=3):(f=t,w===0&&A(Ke)),w--,f===t?s=M:(i=s,s=u),s!==t?(l.length>i?(f=l.charAt(i),i++):(f=t,w===0&&A(O)),f!==t?(E=e,s=Qe(f),e=s):(i=e,e=u)):(i=e,e=u),x[c]={nextPos:i,result:e},e)}function fn(){var e,s,f,c,h=i*49+23,g=x[h];return g?(i=g.nextPos,g.result):(e=i,s=st(),s===t&&(s=lr()),s!==t?(l.charCodeAt(i)===101?(f=Xt,i++):(f=t,w===0&&A(zt)),f===t&&(l.charCodeAt(i)===69?(f=Qt,i++):(f=t,w===0&&A(ei))),f!==t?(c=lr(),c!==t?(E=e,s=ri(s,c),e=s):(i=e,e=u)):(i=e,e=u)):(i=e,e=u),e===t&&(e=i,s=st(),s!==t&&(E=e,s=ti(s)),e=s),x[h]={nextPos:i,result:e},e)}function st(){var e,s,f,c,h,g,y=i*49+24,m=x[y];return m?(i=m.nextPos,m.result):(e=i,l.charCodeAt(i)===43?(s=er,i++):(s=t,w===0&&A(rr)),s===t&&(s=j),s!==t?(f=i,c=Le(),c!==t?(l.charCodeAt(i)===46?(h=K,i++):(h=t,w===0&&A(L)),h!==t?(g=Le(),g!==t?(c=[c,h,g],f=c):(i=f,f=u)):(i=f,f=u)):(i=f,f=u),f!==t?(E=e,s=vr(f),e=s):(i=e,e=u)):(i=e,e=u),e===t&&(e=i,l.charCodeAt(i)===45?(s=Se,i++):(s=t,w===0&&A(Te)),s!==t?(f=i,c=Le(),c!==t?(l.charCodeAt(i)===46?(h=K,i++):(h=t,w===0&&A(L)),h!==t?(g=Le(),g!==t?(c=[c,h,g],f=c):(i=f,f=u)):(i=f,f=u)):(i=f,f=u),f!==t?(E=e,s=Ir(f),e=s):(i=e,e=u)):(i=e,e=u)),x[y]={nextPos:i,result:e},e)}function cn(){var e,s,f=i*49+25,c=x[f];return c?(i=c.nextPos,c.result):(e=i,s=lr(),s!==t&&(E=e,s=ii(s)),e=s,x[f]={nextPos:i,result:e},e)}function lr(){var e,s,f,c,h,g=i*49+26,y=x[g];if(y)return i=y.nextPos,y.result;if(e=i,l.charCodeAt(i)===43?(s=er,i++):(s=t,w===0&&A(rr)),s===t&&(s=j),s!==t){if(f=[],c=R(),c!==t)for(;c!==t;)f.push(c),c=R();else f=u;f!==t?(c=i,w++,l.charCodeAt(i)===46?(h=K,i++):(h=t,w===0&&A(L)),w--,h===t?c=M:(i=c,c=u),c!==t?(E=e,s=vr(f),e=s):(i=e,e=u)):(i=e,e=u)}else i=e,e=u;if(e===t)if(e=i,l.charCodeAt(i)===45?(s=Se,i++):(s=t,w===0&&A(Te)),s!==t){if(f=[],c=R(),c!==t)for(;c!==t;)f.push(c),c=R();else f=u;f!==t?(c=i,w++,l.charCodeAt(i)===46?(h=K,i++):(h=t,w===0&&A(L)),w--,h===t?c=M:(i=c,c=u),c!==t?(E=e,s=Ir(f),e=s):(i=e,e=u)):(i=e,e=u)}else i=e,e=u;return x[g]={nextPos:i,result:e},e}function un(){var e,s,f=i*49+27,c=x[f];return c?(i=c.nextPos,c.result):(e=i,l.substr(i,4)===Pr?(s=Pr,i+=4):(s=t,w===0&&A(ni)),s!==t&&(E=e,s=si()),e=s,e===t&&(e=i,l.substr(i,5)===Fr?(s=Fr,i+=5):(s=t,w===0&&A(oi)),s!==t&&(E=e,s=li()),e=s),x[f]={nextPos:i,result:e},e)}function an(){var e,s,f,c,h,g=i*49+28,y=x[g];if(y)return i=y.nextPos,y.result;if(e=i,l.charCodeAt(i)===91?(s=Y,i++):(s=t,w===0&&A(fe)),s!==t){for(f=[],c=ne();c!==t;)f.push(c),c=ne();f!==t?(l.charCodeAt(i)===93?(c=te,i++):(c=t,w===0&&A(I)),c!==t?(E=e,s=fi(),e=s):(i=e,e=u)):(i=e,e=u)}else i=e,e=u;if(e===t&&(e=i,l.charCodeAt(i)===91?(s=Y,i++):(s=t,w===0&&A(fe)),s!==t?(f=ot(),f===t&&(f=j),f!==t?(l.charCodeAt(i)===93?(c=te,i++):(c=t,w===0&&A(I)),c!==t?(E=e,s=ci(f),e=s):(i=e,e=u)):(i=e,e=u)):(i=e,e=u),e===t)){if(e=i,l.charCodeAt(i)===91?(s=Y,i++):(s=t,w===0&&A(fe)),s!==t){if(f=[],c=He(),c!==t)for(;c!==t;)f.push(c),c=He();else f=u;f!==t?(l.charCodeAt(i)===93?(c=te,i++):(c=t,w===0&&A(I)),c!==t?(E=e,s=ui(f),e=s):(i=e,e=u)):(i=e,e=u)}else i=e,e=u;if(e===t)if(e=i,l.charCodeAt(i)===91?(s=Y,i++):(s=t,w===0&&A(fe)),s!==t){if(f=[],c=He(),c!==t)for(;c!==t;)f.push(c),c=He();else f=u;f!==t?(c=ot(),c!==t?(l.charCodeAt(i)===93?(h=te,i++):(h=t,w===0&&A(I)),h!==t?(E=e,s=ai(f,c),e=s):(i=e,e=u)):(i=e,e=u)):(i=e,e=u)}else i=e,e=u}return x[g]={nextPos:i,result:e},e}function ot(){var e,s,f,c,h,g=i*49+29,y=x[g];if(y)return i=y.nextPos,y.result;for(e=i,s=[],f=ne();f!==t;)s.push(f),f=ne();if(s!==t)if(f=Ce(),f!==t){for(c=[],h=ne();h!==t;)c.push(h),h=ne();c!==t?(E=e,s=br(f),e=s):(i=e,e=u)}else i=e,e=u;else i=e,e=u;return x[g]={nextPos:i,result:e},e}function He(){var e,s,f,c,h,g,y,m=i*49+30,P=x[m];if(P)return i=P.nextPos,P.result;for(e=i,s=[],f=ne();f!==t;)s.push(f),f=ne();if(s!==t)if(f=Ce(),f!==t){for(c=[],h=ne();h!==t;)c.push(h),h=ne();if(c!==t)if(l.charCodeAt(i)===44?(h=_r,i++):(h=t,w===0&&A(Ur)),h!==t){for(g=[],y=ne();y!==t;)g.push(y),y=ne();g!==t?(E=e,s=br(f),e=s):(i=e,e=u)}else i=e,e=u;else i=e,e=u}else i=e,e=u;else i=e,e=u;return x[m]={nextPos:i,result:e},e}function ne(){var e,s=i*49+31,f=x[s];return f?(i=f.nextPos,f.result):(e=B(),e===t&&(e=se(),e===t&&(e=We())),x[s]={nextPos:i,result:e},e)}function hn(){var e,s,f,c,h,g,y=i*49+32,m=x[y];if(m)return i=m.nextPos,m.result;if(e=i,l.charCodeAt(i)===123?(s=hi,i++):(s=t,w===0&&A(pi)),s!==t){for(f=[],c=B();c!==t;)f.push(c),c=B();if(f!==t){for(c=[],h=lt();h!==t;)c.push(h),h=lt();if(c!==t){for(h=[],g=B();g!==t;)h.push(g),g=B();h!==t?(l.charCodeAt(i)===125?(g=gi,i++):(g=t,w===0&&A(di)),g!==t?(E=e,s=yi(c),e=s):(i=e,e=u)):(i=e,e=u)}else i=e,e=u}else i=e,e=u}else i=e,e=u;return x[y]={nextPos:i,result:e},e}function lt(){var e,s,f,c,h,g,y,m,P,k,U,N=i*49+33,q=x[N];if(q)return i=q.nextPos,q.result;for(e=i,s=[],f=B();f!==t;)s.push(f),f=B();if(s!==t)if(f=De(),f!==t){for(c=[],h=B();h!==t;)c.push(h),h=B();if(c!==t)if(l.charCodeAt(i)===61?(h=D,i++):(h=t,w===0&&A(X)),h!==t){for(g=[],y=B();y!==t;)g.push(y),y=B();if(g!==t)if(y=Ce(),y!==t){for(m=[],P=B();P!==t;)m.push(P),P=B();if(m!==t)if(l.charCodeAt(i)===44?(P=_r,i++):(P=t,w===0&&A(Ur)),P!==t){for(k=[],U=B();U!==t;)k.push(U),U=B();k!==t?(E=e,s=Sr(f,y),e=s):(i=e,e=u)}else i=e,e=u;else i=e,e=u}else i=e,e=u;else i=e,e=u}else i=e,e=u;else i=e,e=u}else i=e,e=u;else i=e,e=u;if(e===t){for(e=i,s=[],f=B();f!==t;)s.push(f),f=B();if(s!==t)if(f=De(),f!==t){for(c=[],h=B();h!==t;)c.push(h),h=B();if(c!==t)if(l.charCodeAt(i)===61?(h=D,i++):(h=t,w===0&&A(X)),h!==t){for(g=[],y=B();y!==t;)g.push(y),y=B();g!==t?(y=Ce(),y!==t?(E=e,s=Sr(f,y),e=s):(i=e,e=u)):(i=e,e=u)}else i=e,e=u;else i=e,e=u}else i=e,e=u;else i=e,e=u}return x[N]={nextPos:i,result:e},e}function ft(){var e,s,f,c=i*49+34,h=x[c];return h?(i=h.nextPos,h.result):(e=i,l.charCodeAt(i)===46?(s=K,i++):(s=t,w===0&&A(L)),s!==t?(f=Le(),f!==t?(E=e,s=wi(f),e=s):(i=e,e=u)):(i=e,e=u),x[c]={nextPos:i,result:e},e)}function ct(){var e,s,f,c,h,g,y,m,P,k,U,N,q=i*49+35,ee=x[q];return ee?(i=ee.nextPos,ee.result):(e=i,s=i,f=R(),f!==t?(c=R(),c!==t?(h=R(),h!==t?(g=R(),g!==t?(l.charCodeAt(i)===45?(y=Se,i++):(y=t,w===0&&A(Te)),y!==t?(m=R(),m!==t?(P=R(),P!==t?(l.charCodeAt(i)===45?(k=Se,i++):(k=t,w===0&&A(Te)),k!==t?(U=R(),U!==t?(N=R(),N!==t?(f=[f,c,h,g,y,m,P,k,U,N],s=f):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u),s!==t&&(E=e,s=xi(s)),e=s,x[q]={nextPos:i,result:e},e)}function pn(){var e,s,f,c,h,g,y,m,P,k,U,N=i*49+36,q=x[N];return q?(i=q.nextPos,q.result):(e=i,s=i,f=R(),f!==t?(c=R(),c!==t?(l.charCodeAt(i)===58?(h=Re,i++):(h=t,w===0&&A(ke)),h!==t?(g=R(),g!==t?(y=R(),y!==t?(l.charCodeAt(i)===58?(m=Re,i++):(m=t,w===0&&A(ke)),m!==t?(P=R(),P!==t?(k=R(),k!==t?(U=ft(),U===t&&(U=j),U!==t?(f=[f,c,h,g,y,m,P,k,U],s=f):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u),s!==t&&(E=e,s=Tr(s)),e=s,x[N]={nextPos:i,result:e},e)}function gn(){var e,s,f,c,h,g,y,m,P,k,U,N,q,ee,ve,de,re,gt=i*49+37,cr=x[gt];return cr?(i=cr.nextPos,cr.result):(e=i,s=i,f=R(),f!==t?(c=R(),c!==t?(l.charCodeAt(i)===58?(h=Re,i++):(h=t,w===0&&A(ke)),h!==t?(g=R(),g!==t?(y=R(),y!==t?(l.charCodeAt(i)===58?(m=Re,i++):(m=t,w===0&&A(ke)),m!==t?(P=R(),P!==t?(k=R(),k!==t?(U=ft(),U===t&&(U=j),U!==t?(l.charCodeAt(i)===45?(N=Se,i++):(N=t,w===0&&A(Te)),N===t&&(l.charCodeAt(i)===43?(N=er,i++):(N=t,w===0&&A(rr))),N!==t?(q=R(),q!==t?(ee=R(),ee!==t?(l.charCodeAt(i)===58?(ve=Re,i++):(ve=t,w===0&&A(ke)),ve!==t?(de=R(),de!==t?(re=R(),re!==t?(f=[f,c,h,g,y,m,P,k,U,N,q,ee,ve,de,re],s=f):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u)):(i=s,s=u),s!==t&&(E=e,s=Tr(s)),e=s,x[gt]={nextPos:i,result:e},e)}function dn(){var e,s,f,c,h,g=i*49+38,y=x[g];return y?(i=y.nextPos,y.result):(e=i,s=ct(),s!==t?(l.charCodeAt(i)===84?(f=Rr,i++):(f=t,w===0&&A(kr)),f!==t?(c=pn(),c!==t?(l.charCodeAt(i)===90?(h=Ai,i++):(h=t,w===0&&A(mi)),h!==t?(E=e,s=$i(s,c),e=s):(i=e,e=u)):(i=e,e=u)):(i=e,e=u)):(i=e,e=u),e===t&&(e=i,s=ct(),s!==t?(l.charCodeAt(i)===84?(f=Rr,i++):(f=t,w===0&&A(kr)),f!==t?(c=gn(),c!==t?(E=e,s=Ei(s,c),e=s):(i=e,e=u)):(i=e,e=u)):(i=e,e=u)),x[g]={nextPos:i,result:e},e)}function B(){var e,s=i*49+39,f=x[s];return f?(i=f.nextPos,f.result):(Bi.test(l.charAt(i))?(e=l.charAt(i),i++):(e=t,w===0&&A(Ci)),x[s]={nextPos:i,result:e},e)}function se(){var e,s,f,c=i*49+40,h=x[c];return h?(i=h.nextPos,h.result):(l.charCodeAt(i)===10?(e=Mr,i++):(e=t,w===0&&A(Dr)),e===t&&(e=i,l.charCodeAt(i)===13?(s=vi,i++):(s=t,w===0&&A(Ii)),s!==t?(l.charCodeAt(i)===10?(f=Mr,i++):(f=t,w===0&&A(Dr)),f!==t?(s=[s,f],e=s):(i=e,e=u)):(i=e,e=u)),x[c]={nextPos:i,result:e},e)}function ut(){var e,s=i*49+41,f=x[s];return f?(i=f.nextPos,f.result):(e=se(),e===t&&(e=B()),x[s]={nextPos:i,result:e},e)}function Ge(){var e,s,f=i*49+42,c=x[f];return c?(i=c.nextPos,c.result):(e=i,w++,l.length>i?(s=l.charAt(i),i++):(s=t,w===0&&A(O)),w--,s===t?e=M:(i=e,e=u),x[f]={nextPos:i,result:e},e)}function oe(){var e,s=i*49+43,f=x[s];return f?(i=f.nextPos,f.result):(Pi.test(l.charAt(i))?(e=l.charAt(i),i++):(e=t,w===0&&A(Fi)),x[s]={nextPos:i,result:e},e)}function R(){var e,s,f=i*49+44,c=x[f];return c?(i=c.nextPos,c.result):(bi.test(l.charAt(i))?(e=l.charAt(i),i++):(e=t,w===0&&A(_i)),e===t&&(e=i,l.charCodeAt(i)===95?(s=Ui,i++):(s=t,w===0&&A(Si)),s!==t&&(E=e,s=Ti()),e=s),x[f]={nextPos:i,result:e},e)}function at(){var e,s=i*49+45,f=x[s];return f?(i=f.nextPos,f.result):(Ri.test(l.charAt(i))?(e=l.charAt(i),i++):(e=t,w===0&&A(ki)),x[s]={nextPos:i,result:e},e)}function Le(){var e,s,f,c=i*49+46,h=x[c];if(h)return i=h.nextPos,h.result;if(e=i,s=[],f=R(),f!==t)for(;f!==t;)s.push(f),f=R();else s=u;return s!==t&&(E=e,s=Mi(s)),e=s,x[c]={nextPos:i,result:e},e}function ht(){var e,s,f=i*49+47,c=x[f];return c?(i=c.nextPos,c.result):(e=i,l.substr(i,2)===Lr?(s=Lr,i+=2):(s=t,w===0&&A(Di)),s!==t&&(E=e,s=Li()),e=s,e===t&&(e=i,l.substr(i,2)===Nr?(s=Nr,i+=2):(s=t,w===0&&A(Ni)),s!==t&&(E=e,s=Oi()),e=s,e===t&&(e=i,l.substr(i,2)===Or?(s=Or,i+=2):(s=t,w===0&&A(ji)),s!==t&&(E=e,s=qi()),e=s,e===t&&(e=i,l.substr(i,2)===jr?(s=jr,i+=2):(s=t,w===0&&A(Wi)),s!==t&&(E=e,s=Hi()),e=s,e===t&&(e=i,l.substr(i,2)===qr?(s=qr,i+=2):(s=t,w===0&&A(Gi)),s!==t&&(E=e,s=Ji()),e=s,e===t&&(e=i,l.substr(i,2)===Wr?(s=Wr,i+=2):(s=t,w===0&&A(Vi)),s!==t&&(E=e,s=Zi()),e=s,e===t&&(e=i,l.substr(i,2)===Hr?(s=Hr,i+=2):(s=t,w===0&&A(Yi)),s!==t&&(E=e,s=Ki()),e=s,e===t&&(e=yn()))))))),x[f]={nextPos:i,result:e},e)}function yn(){var e,s,f,c,h,g,y,m,P,k,U,N=i*49+48,q=x[N];return q?(i=q.nextPos,q.result):(e=i,l.substr(i,2)===Gr?(s=Gr,i+=2):(s=t,w===0&&A(Xi)),s!==t?(f=i,c=oe(),c!==t?(h=oe(),h!==t?(g=oe(),g!==t?(y=oe(),y!==t?(m=oe(),m!==t?(P=oe(),P!==t?(k=oe(),k!==t?(U=oe(),U!==t?(c=[c,h,g,y,m,P,k,U],f=c):(i=f,f=u)):(i=f,f=u)):(i=f,f=u)):(i=f,f=u)):(i=f,f=u)):(i=f,f=u)):(i=f,f=u)):(i=f,f=u),f!==t?(E=e,s=Jr(f),e=s):(i=e,e=u)):(i=e,e=u),e===t&&(e=i,l.substr(i,2)===Vr?(s=Vr,i+=2):(s=t,w===0&&A(zi)),s!==t?(f=i,c=oe(),c!==t?(h=oe(),h!==t?(g=oe(),g!==t?(y=oe(),y!==t?(c=[c,h,g,y],f=c):(i=f,f=u)):(i=f,f=u)):(i=f,f=u)):(i=f,f=u),f!==t?(E=e,s=Jr(f),e=s):(i=e,e=u)):(i=e,e=u)),x[N]={nextPos:i,result:e},e)}var pt=[];function wn(e,s,f){var c=new Error(e);throw c.line=s,c.column=f,c}function fr(e){pt.push(e)}function Z(e,s,f,c,h){var g={type:e,value:s,line:f(),column:c()};return h&&(g.key=h),g}function xn(e,s,f){var c=parseInt("0x"+e);if(!isFinite(c)||Math.floor(c)!=c||c<0||c>1114111||c>55295&&c<57344)wn("Invalid Unicode escape code: "+e,s,f);else return An(c)}function An(){var e=16384,s=[],f,c,h=-1,g=arguments.length;if(!g)return"";for(var y="";++h<g;){var m=Number(arguments[h]);m<=65535?s.push(m):(m-=65536,f=(m>>10)+55296,c=m%1024+56320,s.push(f,c)),(h+1==g||s.length>e)&&(y+=String.fromCharCode.apply(null,s),s.length=0)}return y}if(qe=$(),qe!==t&&i===l.length)return qe;throw qe!==t&&i<l.length&&A({type:"end",description:"end of input"}),sr(null,ir,je)}return{SyntaxError:r,parse:n}})()});var At=we((ds,xt)=>{"use strict";function In(o){var r=[],n=[],l="",a=Object.create(null),t=a,p=!1;return $(o);function $(I){for(var _,S=0;S<I.length;S++)switch(_=I[S],_.type){case"Assign":b(_);break;case"ObjectPath":M(_);break;case"ArrayPath":O(_);break}return a}function C(I,_,S){var T=new Error(I);throw T.line=_,T.column=S,T}function b(I){var _=I.key,S=I.value,T=I.line,Q=I.column,H;l?H=l+"."+_:H=_,typeof t[_]<"u"&&C("Cannot redefine existing key '"+H+"'.",T,Q),t[_]=v(S),u(H)||(r.push(H),n.push(H))}function u(I){return r.indexOf(I)!==-1}function v(I){return I.type==="Array"?fe(I.value):I.type==="InlineTable"?W(I.value):I.value}function W(I){for(var _=Object.create(null),S=0;S<I.length;S++){var T=I[S];T.value.type==="InlineTable"?_[T.key]=W(T.value.value):T.type==="InlineTableValue"&&(_[T.key]=v(T.value))}return _}function M(I){var _=I.value,S=_.map(te).join("."),T=I.line,Q=I.column;u(S)&&C("Cannot redefine existing key '"+_+"'.",T,Q),r.push(S),t=Y(a,_,Object.create(null),T,Q),l=_}function O(I){var _=I.value,S=_.map(te).join("."),T=I.line,Q=I.column;if(u(S)||r.push(S),r=r.filter(function(K){return K.indexOf(S)!==0}),r.push(S),t=Y(a,_,[],T,Q),l=S,t instanceof Array){var H=Object.create(null);t.push(H),t=H}else C("Cannot redefine existing key '"+_+"'.",T,Q)}function Y(I,_,S,T,Q){for(var H=[],K="",L=_.join("."),D=I,X=0;X<_.length;X++){var ue=_[X];H.push(ue),K=H.join("."),typeof D[ue]>"u"?X===_.length-1?D[ue]=S:D[ue]=Object.create(null):X!==_.length-1&&n.indexOf(K)>-1&&C("Cannot redefine existing key '"+K+"'.",T,Q),D=D[ue],D instanceof Array&&D.length&&X<_.length-1&&(D=D[D.length-1])}return D}function fe(I){for(var _=null,S=0;S<I.length;S++){var T=I[S];_===null?_=T.type:T.type!==_&&C("Cannot add value of type "+T.type+" to array of type "+_+".",T.line,T.column)}return I.map(v)}function te(I){return I.indexOf(".")>-1?'"'+I+'"':I}}xt.exports={compile:In}});var $t=we((ys,mt)=>{var Pn=wt(),Fn=At();mt.exports={parse:function(o){var r=Pn.parse(o.toString());return Fn.compile(r)}}});var vt=we(Je=>{"use strict";Je.byteLength=Un;Je.toByteArray=Tn;Je.fromByteArray=Mn;var ae=[],le=[],_n=typeof Uint8Array<"u"?Uint8Array:Array,pr="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";for(Ae=0,Bt=pr.length;Ae<Bt;++Ae)ae[Ae]=pr[Ae],le[pr.charCodeAt(Ae)]=Ae;var Ae,Bt;le[45]=62;le[95]=63;function Ct(o){var r=o.length;if(r%4>0)throw new Error("Invalid string. Length must be a multiple of 4");var n=o.indexOf("=");n===-1&&(n=r);var l=n===r?0:4-n%4;return[n,l]}function Un(o){var r=Ct(o),n=r[0],l=r[1];return(n+l)*3/4-l}function Sn(o,r,n){return(r+n)*3/4-n}function Tn(o){var r,n=Ct(o),l=n[0],a=n[1],t=new _n(Sn(o,l,a)),p=0,$=a>0?l-4:l,C;for(C=0;C<$;C+=4)r=le[o.charCodeAt(C)]<<18|le[o.charCodeAt(C+1)]<<12|le[o.charCodeAt(C+2)]<<6|le[o.charCodeAt(C+3)],t[p++]=r>>16&255,t[p++]=r>>8&255,t[p++]=r&255;return a===2&&(r=le[o.charCodeAt(C)]<<2|le[o.charCodeAt(C+1)]>>4,t[p++]=r&255),a===1&&(r=le[o.charCodeAt(C)]<<10|le[o.charCodeAt(C+1)]<<4|le[o.charCodeAt(C+2)]>>2,t[p++]=r>>8&255,t[p++]=r&255),t}function Rn(o){return ae[o>>18&63]+ae[o>>12&63]+ae[o>>6&63]+ae[o&63]}function kn(o,r,n){for(var l,a=[],t=r;t<n;t+=3)l=(o[t]<<16&16711680)+(o[t+1]<<8&65280)+(o[t+2]&255),a.push(Rn(l));return a.join("")}function Mn(o){for(var r,n=o.length,l=n%3,a=[],t=16383,p=0,$=n-l;p<$;p+=t)a.push(kn(o,p,p+t>$?$:p+t));return l===1?(r=o[n-1],a.push(ae[r>>2]+ae[r<<4&63]+"==")):l===2&&(r=(o[n-2]<<8)+o[n-1],a.push(ae[r>>10]+ae[r>>4&63]+ae[r<<2&63]+"=")),a.join("")}});var It=we(gr=>{gr.read=function(o,r,n,l,a){var t,p,$=a*8-l-1,C=(1<<$)-1,b=C>>1,u=-7,v=n?a-1:0,W=n?-1:1,M=o[r+v];for(v+=W,t=M&(1<<-u)-1,M>>=-u,u+=$;u>0;t=t*256+o[r+v],v+=W,u-=8);for(p=t&(1<<-u)-1,t>>=-u,u+=l;u>0;p=p*256+o[r+v],v+=W,u-=8);if(t===0)t=1-b;else{if(t===C)return p?NaN:(M?-1:1)*(1/0);p=p+Math.pow(2,l),t=t-b}return(M?-1:1)*p*Math.pow(2,t-l)};gr.write=function(o,r,n,l,a,t){var p,$,C,b=t*8-a-1,u=(1<<b)-1,v=u>>1,W=a===23?Math.pow(2,-24)-Math.pow(2,-77):0,M=l?0:t-1,O=l?1:-1,Y=r<0||r===0&&1/r<0?1:0;for(r=Math.abs(r),isNaN(r)||r===1/0?($=isNaN(r)?1:0,p=u):(p=Math.floor(Math.log(r)/Math.LN2),r*(C=Math.pow(2,-p))<1&&(p--,C*=2),p+v>=1?r+=W/C:r+=W*Math.pow(2,1-v),r*C>=2&&(p++,C/=2),p+v>=u?($=0,p=u):p+v>=1?($=(r*C-1)*Math.pow(2,a),p=p+v):($=r*Math.pow(2,v-1)*Math.pow(2,a),p=0));a>=8;o[n+M]=$&255,M+=O,$/=256,a-=8);for(p=p<<a|$,b+=a;b>0;o[n+M]=p&255,M+=O,p/=256,b-=8);o[n+M-O]|=Y*128}});var Wt=we(be=>{"use strict";var dr=vt(),Pe=It(),Pt=typeof Symbol=="function"&&typeof Symbol.for=="function"?Symbol.for("nodejs.util.inspect.custom"):null;be.Buffer=d;be.SlowBuffer=qn;be.INSPECT_MAX_BYTES=50;var Ve=2147483647;be.kMaxLength=Ve;d.TYPED_ARRAY_SUPPORT=Dn();!d.TYPED_ARRAY_SUPPORT&&typeof console<"u"&&typeof console.error=="function"&&console.error("This browser lacks typed array (Uint8Array) support which is required by `buffer` v5.x. Use `buffer` v4.x if you require old browser support.");function Dn(){try{let o=new Uint8Array(1),r={foo:function(){return 42}};return Object.setPrototypeOf(r,Uint8Array.prototype),Object.setPrototypeOf(o,r),o.foo()===42}catch{return!1}}Object.defineProperty(d.prototype,"parent",{enumerable:!0,get:function(){if(d.isBuffer(this))return this.buffer}});Object.defineProperty(d.prototype,"offset",{enumerable:!0,get:function(){if(d.isBuffer(this))return this.byteOffset}});function pe(o){if(o>Ve)throw new RangeError('The value "'+o+'" is invalid for option "size"');let r=new Uint8Array(o);return Object.setPrototypeOf(r,d.prototype),r}function d(o,r,n){if(typeof o=="number"){if(typeof r=="string")throw new TypeError('The "string" argument must be of type string. Received type number');return Ar(o)}return Ut(o,r,n)}d.poolSize=8192;function Ut(o,r,n){if(typeof o=="string")return Nn(o,r);if(ArrayBuffer.isView(o))return On(o);if(o==null)throw new TypeError("The first argument must be one of type string, Buffer, ArrayBuffer, Array, or Array-like Object. Received type "+typeof o);if(he(o,ArrayBuffer)||o&&he(o.buffer,ArrayBuffer)||typeof SharedArrayBuffer<"u"&&(he(o,SharedArrayBuffer)||o&&he(o.buffer,SharedArrayBuffer)))return wr(o,r,n);if(typeof o=="number")throw new TypeError('The "value" argument must not be of type number. Received type number');let l=o.valueOf&&o.valueOf();if(l!=null&&l!==o)return d.from(l,r,n);let a=jn(o);if(a)return a;if(typeof Symbol<"u"&&Symbol.toPrimitive!=null&&typeof o[Symbol.toPrimitive]=="function")return d.from(o[Symbol.toPrimitive]("string"),r,n);throw new TypeError("The first argument must be one of type string, Buffer, ArrayBuffer, Array, or Array-like Object. Received type "+typeof o)}d.from=function(o,r,n){return Ut(o,r,n)};Object.setPrototypeOf(d.prototype,Uint8Array.prototype);Object.setPrototypeOf(d,Uint8Array);function St(o){if(typeof o!="number")throw new TypeError('"size" argument must be of type number');if(o<0)throw new RangeError('The value "'+o+'" is invalid for option "size"')}function Ln(o,r,n){return St(o),o<=0?pe(o):r!==void 0?typeof n=="string"?pe(o).fill(r,n):pe(o).fill(r):pe(o)}d.alloc=function(o,r,n){return Ln(o,r,n)};function Ar(o){return St(o),pe(o<0?0:mr(o)|0)}d.allocUnsafe=function(o){return Ar(o)};d.allocUnsafeSlow=function(o){return Ar(o)};function Nn(o,r){if((typeof r!="string"||r==="")&&(r="utf8"),!d.isEncoding(r))throw new TypeError("Unknown encoding: "+r);let n=Tt(o,r)|0,l=pe(n),a=l.write(o,r);return a!==n&&(l=l.slice(0,a)),l}function yr(o){let r=o.length<0?0:mr(o.length)|0,n=pe(r);for(let l=0;l<r;l+=1)n[l]=o[l]&255;return n}function On(o){if(he(o,Uint8Array)){let r=new Uint8Array(o);return wr(r.buffer,r.byteOffset,r.byteLength)}return yr(o)}function wr(o,r,n){if(r<0||o.byteLength<r)throw new RangeError('"offset" is outside of buffer bounds');if(o.byteLength<r+(n||0))throw new RangeError('"length" is outside of buffer bounds');let l;return r===void 0&&n===void 0?l=new Uint8Array(o):n===void 0?l=new Uint8Array(o,r):l=new Uint8Array(o,r,n),Object.setPrototypeOf(l,d.prototype),l}function jn(o){if(d.isBuffer(o)){let r=mr(o.length)|0,n=pe(r);return n.length===0||o.copy(n,0,0,r),n}if(o.length!==void 0)return typeof o.length!="number"||Er(o.length)?pe(0):yr(o);if(o.type==="Buffer"&&Array.isArray(o.data))return yr(o.data)}function mr(o){if(o>=Ve)throw new RangeError("Attempt to allocate Buffer larger than maximum size: 0x"+Ve.toString(16)+" bytes");return o|0}function qn(o){return+o!=o&&(o=0),d.alloc(+o)}d.isBuffer=function(r){return r!=null&&r._isBuffer===!0&&r!==d.prototype};d.compare=function(r,n){if(he(r,Uint8Array)&&(r=d.from(r,r.offset,r.byteLength)),he(n,Uint8Array)&&(n=d.from(n,n.offset,n.byteLength)),!d.isBuffer(r)||!d.isBuffer(n))throw new TypeError('The "buf1", "buf2" arguments must be one of type Buffer or Uint8Array');if(r===n)return 0;let l=r.length,a=n.length;for(let t=0,p=Math.min(l,a);t<p;++t)if(r[t]!==n[t]){l=r[t],a=n[t];break}return l<a?-1:a<l?1:0};d.isEncoding=function(r){switch(String(r).toLowerCase()){case"hex":case"utf8":case"utf-8":case"ascii":case"latin1":case"binary":case"base64":case"ucs2":case"ucs-2":case"utf16le":case"utf-16le":return!0;default:return!1}};d.concat=function(r,n){if(!Array.isArray(r))throw new TypeError('"list" argument must be an Array of Buffers');if(r.length===0)return d.alloc(0);let l;if(n===void 0)for(n=0,l=0;l<r.length;++l)n+=r[l].length;let a=d.allocUnsafe(n),t=0;for(l=0;l<r.length;++l){let p=r[l];if(he(p,Uint8Array))t+p.length>a.length?(d.isBuffer(p)||(p=d.from(p)),p.copy(a,t)):Uint8Array.prototype.set.call(a,p,t);else if(d.isBuffer(p))p.copy(a,t);else throw new TypeError('"list" argument must be an Array of Buffers');t+=p.length}return a};function Tt(o,r){if(d.isBuffer(o))return o.length;if(ArrayBuffer.isView(o)||he(o,ArrayBuffer))return o.byteLength;if(typeof o!="string")throw new TypeError('The "string" argument must be one of type string, Buffer, or ArrayBuffer. Received type '+typeof o);let n=o.length,l=arguments.length>2&&arguments[2]===!0;if(!l&&n===0)return 0;let a=!1;for(;;)switch(r){case"ascii":case"latin1":case"binary":return n;case"utf8":case"utf-8":return xr(o).length;case"ucs2":case"ucs-2":case"utf16le":case"utf-16le":return n*2;case"hex":return n>>>1;case"base64":return qt(o).length;default:if(a)return l?-1:xr(o).length;r=(""+r).toLowerCase(),a=!0}}d.byteLength=Tt;function Wn(o,r,n){let l=!1;if((r===void 0||r<0)&&(r=0),r>this.length||((n===void 0||n>this.length)&&(n=this.length),n<=0)||(n>>>=0,r>>>=0,n<=r))return"";for(o||(o="utf8");;)switch(o){case"hex":return Qn(this,r,n);case"utf8":case"utf-8":return kt(this,r,n);case"ascii":return Xn(this,r,n);case"latin1":case"binary":return zn(this,r,n);case"base64":return Yn(this,r,n);case"ucs2":case"ucs-2":case"utf16le":case"utf-16le":return es(this,r,n);default:if(l)throw new TypeError("Unknown encoding: "+o);o=(o+"").toLowerCase(),l=!0}}d.prototype._isBuffer=!0;function me(o,r,n){let l=o[r];o[r]=o[n],o[n]=l}d.prototype.swap16=function(){let r=this.length;if(r%2!==0)throw new RangeError("Buffer size must be a multiple of 16-bits");for(let n=0;n<r;n+=2)me(this,n,n+1);return this};d.prototype.swap32=function(){let r=this.length;if(r%4!==0)throw new RangeError("Buffer size must be a multiple of 32-bits");for(let n=0;n<r;n+=4)me(this,n,n+3),me(this,n+1,n+2);return this};d.prototype.swap64=function(){let r=this.length;if(r%8!==0)throw new RangeError("Buffer size must be a multiple of 64-bits");for(let n=0;n<r;n+=8)me(this,n,n+7),me(this,n+1,n+6),me(this,n+2,n+5),me(this,n+3,n+4);return this};d.prototype.toString=function(){let r=this.length;return r===0?"":arguments.length===0?kt(this,0,r):Wn.apply(this,arguments)};d.prototype.toLocaleString=d.prototype.toString;d.prototype.equals=function(r){if(!d.isBuffer(r))throw new TypeError("Argument must be a Buffer");return this===r?!0:d.compare(this,r)===0};d.prototype.inspect=function(){let r="",n=be.INSPECT_MAX_BYTES;return r=this.toString("hex",0,n).replace(/(.{2})/g,"$1 ").trim(),this.length>n&&(r+=" ... "),"<Buffer "+r+">"};Pt&&(d.prototype[Pt]=d.prototype.inspect);d.prototype.compare=function(r,n,l,a,t){if(he(r,Uint8Array)&&(r=d.from(r,r.offset,r.byteLength)),!d.isBuffer(r))throw new TypeError('The "target" argument must be one of type Buffer or Uint8Array. Received type '+typeof r);if(n===void 0&&(n=0),l===void 0&&(l=r?r.length:0),a===void 0&&(a=0),t===void 0&&(t=this.length),n<0||l>r.length||a<0||t>this.length)throw new RangeError("out of range index");if(a>=t&&n>=l)return 0;if(a>=t)return-1;if(n>=l)return 1;if(n>>>=0,l>>>=0,a>>>=0,t>>>=0,this===r)return 0;let p=t-a,$=l-n,C=Math.min(p,$),b=this.slice(a,t),u=r.slice(n,l);for(let v=0;v<C;++v)if(b[v]!==u[v]){p=b[v],$=u[v];break}return p<$?-1:$<p?1:0};function Rt(o,r,n,l,a){if(o.length===0)return-1;if(typeof n=="string"?(l=n,n=0):n>2147483647?n=2147483647:n<-2147483648&&(n=-2147483648),n=+n,Er(n)&&(n=a?0:o.length-1),n<0&&(n=o.length+n),n>=o.length){if(a)return-1;n=o.length-1}else if(n<0)if(a)n=0;else return-1;if(typeof r=="string"&&(r=d.from(r,l)),d.isBuffer(r))return r.length===0?-1:Ft(o,r,n,l,a);if(typeof r=="number")return r=r&255,typeof Uint8Array.prototype.indexOf=="function"?a?Uint8Array.prototype.indexOf.call(o,r,n):Uint8Array.prototype.lastIndexOf.call(o,r,n):Ft(o,[r],n,l,a);throw new TypeError("val must be string, number or Buffer")}function Ft(o,r,n,l,a){let t=1,p=o.length,$=r.length;if(l!==void 0&&(l=String(l).toLowerCase(),l==="ucs2"||l==="ucs-2"||l==="utf16le"||l==="utf-16le")){if(o.length<2||r.length<2)return-1;t=2,p/=2,$/=2,n/=2}function C(u,v){return t===1?u[v]:u.readUInt16BE(v*t)}let b;if(a){let u=-1;for(b=n;b<p;b++)if(C(o,b)===C(r,u===-1?0:b-u)){if(u===-1&&(u=b),b-u+1===$)return u*t}else u!==-1&&(b-=b-u),u=-1}else for(n+$>p&&(n=p-$),b=n;b>=0;b--){let u=!0;for(let v=0;v<$;v++)if(C(o,b+v)!==C(r,v)){u=!1;break}if(u)return b}return-1}d.prototype.includes=function(r,n,l){return this.indexOf(r,n,l)!==-1};d.prototype.indexOf=function(r,n,l){return Rt(this,r,n,l,!0)};d.prototype.lastIndexOf=function(r,n,l){return Rt(this,r,n,l,!1)};function Hn(o,r,n,l){n=Number(n)||0;let a=o.length-n;l?(l=Number(l),l>a&&(l=a)):l=a;let t=r.length;l>t/2&&(l=t/2);let p;for(p=0;p<l;++p){let $=parseInt(r.substr(p*2,2),16);if(Er($))return p;o[n+p]=$}return p}function Gn(o,r,n,l){return Ze(xr(r,o.length-n),o,n,l)}function Jn(o,r,n,l){return Ze(ns(r),o,n,l)}function Vn(o,r,n,l){return Ze(qt(r),o,n,l)}function Zn(o,r,n,l){return Ze(ss(r,o.length-n),o,n,l)}d.prototype.write=function(r,n,l,a){if(n===void 0)a="utf8",l=this.length,n=0;else if(l===void 0&&typeof n=="string")a=n,l=this.length,n=0;else if(isFinite(n))n=n>>>0,isFinite(l)?(l=l>>>0,a===void 0&&(a="utf8")):(a=l,l=void 0);else throw new Error("Buffer.write(string, encoding, offset[, length]) is no longer supported");let t=this.length-n;if((l===void 0||l>t)&&(l=t),r.length>0&&(l<0||n<0)||n>this.length)throw new RangeError("Attempt to write outside buffer bounds");a||(a="utf8");let p=!1;for(;;)switch(a){case"hex":return Hn(this,r,n,l);case"utf8":case"utf-8":return Gn(this,r,n,l);case"ascii":case"latin1":case"binary":return Jn(this,r,n,l);case"base64":return Vn(this,r,n,l);case"ucs2":case"ucs-2":case"utf16le":case"utf-16le":return Zn(this,r,n,l);default:if(p)throw new TypeError("Unknown encoding: "+a);a=(""+a).toLowerCase(),p=!0}};d.prototype.toJSON=function(){return{type:"Buffer",data:Array.prototype.slice.call(this._arr||this,0)}};function Yn(o,r,n){return r===0&&n===o.length?dr.fromByteArray(o):dr.fromByteArray(o.slice(r,n))}function kt(o,r,n){n=Math.min(o.length,n);let l=[],a=r;for(;a<n;){let t=o[a],p=null,$=t>239?4:t>223?3:t>191?2:1;if(a+$<=n){let C,b,u,v;switch($){case 1:t<128&&(p=t);break;case 2:C=o[a+1],(C&192)===128&&(v=(t&31)<<6|C&63,v>127&&(p=v));break;case 3:C=o[a+1],b=o[a+2],(C&192)===128&&(b&192)===128&&(v=(t&15)<<12|(C&63)<<6|b&63,v>2047&&(v<55296||v>57343)&&(p=v));break;case 4:C=o[a+1],b=o[a+2],u=o[a+3],(C&192)===128&&(b&192)===128&&(u&192)===128&&(v=(t&15)<<18|(C&63)<<12|(b&63)<<6|u&63,v>65535&&v<1114112&&(p=v))}}p===null?(p=65533,$=1):p>65535&&(p-=65536,l.push(p>>>10&1023|55296),p=56320|p&1023),l.push(p),a+=$}return Kn(l)}var bt=4096;function Kn(o){let r=o.length;if(r<=bt)return String.fromCharCode.apply(String,o);let n="",l=0;for(;l<r;)n+=String.fromCharCode.apply(String,o.slice(l,l+=bt));return n}function Xn(o,r,n){let l="";n=Math.min(o.length,n);for(let a=r;a<n;++a)l+=String.fromCharCode(o[a]&127);return l}function zn(o,r,n){let l="";n=Math.min(o.length,n);for(let a=r;a<n;++a)l+=String.fromCharCode(o[a]);return l}function Qn(o,r,n){let l=o.length;(!r||r<0)&&(r=0),(!n||n<0||n>l)&&(n=l);let a="";for(let t=r;t<n;++t)a+=os[o[t]];return a}function es(o,r,n){let l=o.slice(r,n),a="";for(let t=0;t<l.length-1;t+=2)a+=String.fromCharCode(l[t]+l[t+1]*256);return a}d.prototype.slice=function(r,n){let l=this.length;r=~~r,n=n===void 0?l:~~n,r<0?(r+=l,r<0&&(r=0)):r>l&&(r=l),n<0?(n+=l,n<0&&(n=0)):n>l&&(n=l),n<r&&(n=r);let a=this.subarray(r,n);return Object.setPrototypeOf(a,d.prototype),a};function G(o,r,n){if(o%1!==0||o<0)throw new RangeError("offset is not uint");if(o+r>n)throw new RangeError("Trying to access beyond buffer length")}d.prototype.readUintLE=d.prototype.readUIntLE=function(r,n,l){r=r>>>0,n=n>>>0,l||G(r,n,this.length);let a=this[r],t=1,p=0;for(;++p<n&&(t*=256);)a+=this[r+p]*t;return a};d.prototype.readUintBE=d.prototype.readUIntBE=function(r,n,l){r=r>>>0,n=n>>>0,l||G(r,n,this.length);let a=this[r+--n],t=1;for(;n>0&&(t*=256);)a+=this[r+--n]*t;return a};d.prototype.readUint8=d.prototype.readUInt8=function(r,n){return r=r>>>0,n||G(r,1,this.length),this[r]};d.prototype.readUint16LE=d.prototype.readUInt16LE=function(r,n){return r=r>>>0,n||G(r,2,this.length),this[r]|this[r+1]<<8};d.prototype.readUint16BE=d.prototype.readUInt16BE=function(r,n){return r=r>>>0,n||G(r,2,this.length),this[r]<<8|this[r+1]};d.prototype.readUint32LE=d.prototype.readUInt32LE=function(r,n){return r=r>>>0,n||G(r,4,this.length),(this[r]|this[r+1]<<8|this[r+2]<<16)+this[r+3]*16777216};d.prototype.readUint32BE=d.prototype.readUInt32BE=function(r,n){return r=r>>>0,n||G(r,4,this.length),this[r]*16777216+(this[r+1]<<16|this[r+2]<<8|this[r+3])};d.prototype.readBigUInt64LE=ye(function(r){r=r>>>0,Fe(r,"offset");let n=this[r],l=this[r+7];(n===void 0||l===void 0)&&Oe(r,this.length-8);let a=n+this[++r]*2**8+this[++r]*2**16+this[++r]*2**24,t=this[++r]+this[++r]*2**8+this[++r]*2**16+l*2**24;return BigInt(a)+(BigInt(t)<<BigInt(32))});d.prototype.readBigUInt64BE=ye(function(r){r=r>>>0,Fe(r,"offset");let n=this[r],l=this[r+7];(n===void 0||l===void 0)&&Oe(r,this.length-8);let a=n*2**24+this[++r]*2**16+this[++r]*2**8+this[++r],t=this[++r]*2**24+this[++r]*2**16+this[++r]*2**8+l;return(BigInt(a)<<BigInt(32))+BigInt(t)});d.prototype.readIntLE=function(r,n,l){r=r>>>0,n=n>>>0,l||G(r,n,this.length);let a=this[r],t=1,p=0;for(;++p<n&&(t*=256);)a+=this[r+p]*t;return t*=128,a>=t&&(a-=Math.pow(2,8*n)),a};d.prototype.readIntBE=function(r,n,l){r=r>>>0,n=n>>>0,l||G(r,n,this.length);let a=n,t=1,p=this[r+--a];for(;a>0&&(t*=256);)p+=this[r+--a]*t;return t*=128,p>=t&&(p-=Math.pow(2,8*n)),p};d.prototype.readInt8=function(r,n){return r=r>>>0,n||G(r,1,this.length),this[r]&128?(255-this[r]+1)*-1:this[r]};d.prototype.readInt16LE=function(r,n){r=r>>>0,n||G(r,2,this.length);let l=this[r]|this[r+1]<<8;return l&32768?l|4294901760:l};d.prototype.readInt16BE=function(r,n){r=r>>>0,n||G(r,2,this.length);let l=this[r+1]|this[r]<<8;return l&32768?l|4294901760:l};d.prototype.readInt32LE=function(r,n){return r=r>>>0,n||G(r,4,this.length),this[r]|this[r+1]<<8|this[r+2]<<16|this[r+3]<<24};d.prototype.readInt32BE=function(r,n){return r=r>>>0,n||G(r,4,this.length),this[r]<<24|this[r+1]<<16|this[r+2]<<8|this[r+3]};d.prototype.readBigInt64LE=ye(function(r){r=r>>>0,Fe(r,"offset");let n=this[r],l=this[r+7];(n===void 0||l===void 0)&&Oe(r,this.length-8);let a=this[r+4]+this[r+5]*2**8+this[r+6]*2**16+(l<<24);return(BigInt(a)<<BigInt(32))+BigInt(n+this[++r]*2**8+this[++r]*2**16+this[++r]*2**24)});d.prototype.readBigInt64BE=ye(function(r){r=r>>>0,Fe(r,"offset");let n=this[r],l=this[r+7];(n===void 0||l===void 0)&&Oe(r,this.length-8);let a=(n<<24)+this[++r]*2**16+this[++r]*2**8+this[++r];return(BigInt(a)<<BigInt(32))+BigInt(this[++r]*2**24+this[++r]*2**16+this[++r]*2**8+l)});d.prototype.readFloatLE=function(r,n){return r=r>>>0,n||G(r,4,this.length),Pe.read(this,r,!0,23,4)};d.prototype.readFloatBE=function(r,n){return r=r>>>0,n||G(r,4,this.length),Pe.read(this,r,!1,23,4)};d.prototype.readDoubleLE=function(r,n){return r=r>>>0,n||G(r,8,this.length),Pe.read(this,r,!0,52,8)};d.prototype.readDoubleBE=function(r,n){return r=r>>>0,n||G(r,8,this.length),Pe.read(this,r,!1,52,8)};function z(o,r,n,l,a,t){if(!d.isBuffer(o))throw new TypeError('"buffer" argument must be a Buffer instance');if(r>a||r<t)throw new RangeError('"value" argument is out of bounds');if(n+l>o.length)throw new RangeError("Index out of range")}d.prototype.writeUintLE=d.prototype.writeUIntLE=function(r,n,l,a){if(r=+r,n=n>>>0,l=l>>>0,!a){let $=Math.pow(2,8*l)-1;z(this,r,n,l,$,0)}let t=1,p=0;for(this[n]=r&255;++p<l&&(t*=256);)this[n+p]=r/t&255;return n+l};d.prototype.writeUintBE=d.prototype.writeUIntBE=function(r,n,l,a){if(r=+r,n=n>>>0,l=l>>>0,!a){let $=Math.pow(2,8*l)-1;z(this,r,n,l,$,0)}let t=l-1,p=1;for(this[n+t]=r&255;--t>=0&&(p*=256);)this[n+t]=r/p&255;return n+l};d.prototype.writeUint8=d.prototype.writeUInt8=function(r,n,l){return r=+r,n=n>>>0,l||z(this,r,n,1,255,0),this[n]=r&255,n+1};d.prototype.writeUint16LE=d.prototype.writeUInt16LE=function(r,n,l){return r=+r,n=n>>>0,l||z(this,r,n,2,65535,0),this[n]=r&255,this[n+1]=r>>>8,n+2};d.prototype.writeUint16BE=d.prototype.writeUInt16BE=function(r,n,l){return r=+r,n=n>>>0,l||z(this,r,n,2,65535,0),this[n]=r>>>8,this[n+1]=r&255,n+2};d.prototype.writeUint32LE=d.prototype.writeUInt32LE=function(r,n,l){return r=+r,n=n>>>0,l||z(this,r,n,4,4294967295,0),this[n+3]=r>>>24,this[n+2]=r>>>16,this[n+1]=r>>>8,this[n]=r&255,n+4};d.prototype.writeUint32BE=d.prototype.writeUInt32BE=function(r,n,l){return r=+r,n=n>>>0,l||z(this,r,n,4,4294967295,0),this[n]=r>>>24,this[n+1]=r>>>16,this[n+2]=r>>>8,this[n+3]=r&255,n+4};function Mt(o,r,n,l,a){jt(r,l,a,o,n,7);let t=Number(r&BigInt(4294967295));o[n++]=t,t=t>>8,o[n++]=t,t=t>>8,o[n++]=t,t=t>>8,o[n++]=t;let p=Number(r>>BigInt(32)&BigInt(4294967295));return o[n++]=p,p=p>>8,o[n++]=p,p=p>>8,o[n++]=p,p=p>>8,o[n++]=p,n}function Dt(o,r,n,l,a){jt(r,l,a,o,n,7);let t=Number(r&BigInt(4294967295));o[n+7]=t,t=t>>8,o[n+6]=t,t=t>>8,o[n+5]=t,t=t>>8,o[n+4]=t;let p=Number(r>>BigInt(32)&BigInt(4294967295));return o[n+3]=p,p=p>>8,o[n+2]=p,p=p>>8,o[n+1]=p,p=p>>8,o[n]=p,n+8}d.prototype.writeBigUInt64LE=ye(function(r,n=0){return Mt(this,r,n,BigInt(0),BigInt("0xffffffffffffffff"))});d.prototype.writeBigUInt64BE=ye(function(r,n=0){return Dt(this,r,n,BigInt(0),BigInt("0xffffffffffffffff"))});d.prototype.writeIntLE=function(r,n,l,a){if(r=+r,n=n>>>0,!a){let C=Math.pow(2,8*l-1);z(this,r,n,l,C-1,-C)}let t=0,p=1,$=0;for(this[n]=r&255;++t<l&&(p*=256);)r<0&&$===0&&this[n+t-1]!==0&&($=1),this[n+t]=(r/p>>0)-$&255;return n+l};d.prototype.writeIntBE=function(r,n,l,a){if(r=+r,n=n>>>0,!a){let C=Math.pow(2,8*l-1);z(this,r,n,l,C-1,-C)}let t=l-1,p=1,$=0;for(this[n+t]=r&255;--t>=0&&(p*=256);)r<0&&$===0&&this[n+t+1]!==0&&($=1),this[n+t]=(r/p>>0)-$&255;return n+l};d.prototype.writeInt8=function(r,n,l){return r=+r,n=n>>>0,l||z(this,r,n,1,127,-128),r<0&&(r=255+r+1),this[n]=r&255,n+1};d.prototype.writeInt16LE=function(r,n,l){return r=+r,n=n>>>0,l||z(this,r,n,2,32767,-32768),this[n]=r&255,this[n+1]=r>>>8,n+2};d.prototype.writeInt16BE=function(r,n,l){return r=+r,n=n>>>0,l||z(this,r,n,2,32767,-32768),this[n]=r>>>8,this[n+1]=r&255,n+2};d.prototype.writeInt32LE=function(r,n,l){return r=+r,n=n>>>0,l||z(this,r,n,4,2147483647,-2147483648),this[n]=r&255,this[n+1]=r>>>8,this[n+2]=r>>>16,this[n+3]=r>>>24,n+4};d.prototype.writeInt32BE=function(r,n,l){return r=+r,n=n>>>0,l||z(this,r,n,4,2147483647,-2147483648),r<0&&(r=4294967295+r+1),this[n]=r>>>24,this[n+1]=r>>>16,this[n+2]=r>>>8,this[n+3]=r&255,n+4};d.prototype.writeBigInt64LE=ye(function(r,n=0){return Mt(this,r,n,-BigInt("0x8000000000000000"),BigInt("0x7fffffffffffffff"))});d.prototype.writeBigInt64BE=ye(function(r,n=0){return Dt(this,r,n,-BigInt("0x8000000000000000"),BigInt("0x7fffffffffffffff"))});function Lt(o,r,n,l,a,t){if(n+l>o.length)throw new RangeError("Index out of range");if(n<0)throw new RangeError("Index out of range")}function Nt(o,r,n,l,a){return r=+r,n=n>>>0,a||Lt(o,r,n,4,34028234663852886e22,-34028234663852886e22),Pe.write(o,r,n,l,23,4),n+4}d.prototype.writeFloatLE=function(r,n,l){return Nt(this,r,n,!0,l)};d.prototype.writeFloatBE=function(r,n,l){return Nt(this,r,n,!1,l)};function Ot(o,r,n,l,a){return r=+r,n=n>>>0,a||Lt(o,r,n,8,17976931348623157e292,-17976931348623157e292),Pe.write(o,r,n,l,52,8),n+8}d.prototype.writeDoubleLE=function(r,n,l){return Ot(this,r,n,!0,l)};d.prototype.writeDoubleBE=function(r,n,l){return Ot(this,r,n,!1,l)};d.prototype.copy=function(r,n,l,a){if(!d.isBuffer(r))throw new TypeError("argument should be a Buffer");if(l||(l=0),!a&&a!==0&&(a=this.length),n>=r.length&&(n=r.length),n||(n=0),a>0&&a<l&&(a=l),a===l||r.length===0||this.length===0)return 0;if(n<0)throw new RangeError("targetStart out of bounds");if(l<0||l>=this.length)throw new RangeError("Index out of range");if(a<0)throw new RangeError("sourceEnd out of bounds");a>this.length&&(a=this.length),r.length-n<a-l&&(a=r.length-n+l);let t=a-l;return this===r&&typeof Uint8Array.prototype.copyWithin=="function"?this.copyWithin(n,l,a):Uint8Array.prototype.set.call(r,this.subarray(l,a),n),t};d.prototype.fill=function(r,n,l,a){if(typeof r=="string"){if(typeof n=="string"?(a=n,n=0,l=this.length):typeof l=="string"&&(a=l,l=this.length),a!==void 0&&typeof a!="string")throw new TypeError("encoding must be a string");if(typeof a=="string"&&!d.isEncoding(a))throw new TypeError("Unknown encoding: "+a);if(r.length===1){let p=r.charCodeAt(0);(a==="utf8"&&p<128||a==="latin1")&&(r=p)}}else typeof r=="number"?r=r&255:typeof r=="boolean"&&(r=Number(r));if(n<0||this.length<n||this.length<l)throw new RangeError("Out of range index");if(l<=n)return this;n=n>>>0,l=l===void 0?this.length:l>>>0,r||(r=0);let t;if(typeof r=="number")for(t=n;t<l;++t)this[t]=r;else{let p=d.isBuffer(r)?r:d.from(r,a),$=p.length;if($===0)throw new TypeError('The value "'+r+'" is invalid for argument "value"');for(t=0;t<l-n;++t)this[t+n]=p[t%$]}return this};var Ie={};function $r(o,r,n){Ie[o]=class extends n{constructor(){super(),Object.defineProperty(this,"message",{value:r.apply(this,arguments),writable:!0,configurable:!0}),this.name=`${this.name} [${o}]`,this.stack,delete this.name}get code(){return o}set code(a){Object.defineProperty(this,"code",{configurable:!0,enumerable:!0,value:a,writable:!0})}toString(){return`${this.name} [${o}]: ${this.message}`}}}$r("ERR_BUFFER_OUT_OF_BOUNDS",function(o){return o?`${o} is outside of buffer bounds`:"Attempt to access memory outside buffer bounds"},RangeError);$r("ERR_INVALID_ARG_TYPE",function(o,r){return`The "${o}" argument must be of type number. Received type ${typeof r}`},TypeError);$r("ERR_OUT_OF_RANGE",function(o,r,n){let l=`The value of "${o}" is out of range.`,a=n;return Number.isInteger(n)&&Math.abs(n)>2**32?a=_t(String(n)):typeof n=="bigint"&&(a=String(n),(n>BigInt(2)**BigInt(32)||n<-(BigInt(2)**BigInt(32)))&&(a=_t(a)),a+="n"),l+=` It must be ${r}. Received ${a}`,l},RangeError);function _t(o){let r="",n=o.length,l=o[0]==="-"?1:0;for(;n>=l+4;n-=3)r=`_${o.slice(n-3,n)}${r}`;return`${o.slice(0,n)}${r}`}function rs(o,r,n){Fe(r,"offset"),(o[r]===void 0||o[r+n]===void 0)&&Oe(r,o.length-(n+1))}function jt(o,r,n,l,a,t){if(o>n||o<r){let p=typeof r=="bigint"?"n":"",$;throw t>3?r===0||r===BigInt(0)?$=`>= 0${p} and < 2${p} ** ${(t+1)*8}${p}`:$=`>= -(2${p} ** ${(t+1)*8-1}${p}) and < 2 ** ${(t+1)*8-1}${p}`:$=`>= ${r}${p} and <= ${n}${p}`,new Ie.ERR_OUT_OF_RANGE("value",$,o)}rs(l,a,t)}function Fe(o,r){if(typeof o!="number")throw new Ie.ERR_INVALID_ARG_TYPE(r,"number",o)}function Oe(o,r,n){throw Math.floor(o)!==o?(Fe(o,n),new Ie.ERR_OUT_OF_RANGE(n||"offset","an integer",o)):r<0?new Ie.ERR_BUFFER_OUT_OF_BOUNDS:new Ie.ERR_OUT_OF_RANGE(n||"offset",`>= ${n?1:0} and <= ${r}`,o)}var ts=/[^+/0-9A-Za-z-_]/g;function is(o){if(o=o.split("=")[0],o=o.trim().replace(ts,""),o.length<2)return"";for(;o.length%4!==0;)o=o+"=";return o}function xr(o,r){r=r||1/0;let n,l=o.length,a=null,t=[];for(let p=0;p<l;++p){if(n=o.charCodeAt(p),n>55295&&n<57344){if(!a){if(n>56319){(r-=3)>-1&&t.push(239,191,189);continue}else if(p+1===l){(r-=3)>-1&&t.push(239,191,189);continue}a=n;continue}if(n<56320){(r-=3)>-1&&t.push(239,191,189),a=n;continue}n=(a-55296<<10|n-56320)+65536}else a&&(r-=3)>-1&&t.push(239,191,189);if(a=null,n<128){if((r-=1)<0)break;t.push(n)}else if(n<2048){if((r-=2)<0)break;t.push(n>>6|192,n&63|128)}else if(n<65536){if((r-=3)<0)break;t.push(n>>12|224,n>>6&63|128,n&63|128)}else if(n<1114112){if((r-=4)<0)break;t.push(n>>18|240,n>>12&63|128,n>>6&63|128,n&63|128)}else throw new Error("Invalid code point")}return t}function ns(o){let r=[];for(let n=0;n<o.length;++n)r.push(o.charCodeAt(n)&255);return r}function ss(o,r){let n,l,a,t=[];for(let p=0;p<o.length&&!((r-=2)<0);++p)n=o.charCodeAt(p),l=n>>8,a=n%256,t.push(a),t.push(l);return t}function qt(o){return dr.toByteArray(is(o))}function Ze(o,r,n,l){let a;for(a=0;a<l&&!(a+n>=r.length||a>=o.length);++a)r[a+n]=o[a];return a}function he(o,r){return o instanceof r||o!=null&&o.constructor!=null&&o.constructor.name!=null&&o.constructor.name===r.name}function Er(o){return o!==o}var os=(function(){let o="0123456789abcdef",r=new Array(256);for(let n=0;n<16;++n){let l=n*16;for(let a=0;a<16;++a)r[l+a]=o[n]+o[a]}return r})();function ye(o){return typeof BigInt>"u"?ls:o}function ls(){throw new Error("BigInt not supported")}});var Jt=we($e=>{"use strict";$e.__esModule=!0;$e.base64decode=$e.base64encode=void 0;function Ht(o){if(typeof o!="string")if(typeof o=="number")o=o.toString();else throw new Error("Text to encode must be a string or a number.");return Buffer.from(o,"utf8").toString("base64")}$e.base64encode=Ht;function Gt(o){if(typeof o!="string")throw new Error("Input value must be a string.");return Buffer.from(o,"base64").toString("utf8")}$e.base64decode=Gt;$e.default={base64encode:Ht,base64decode:Gt}});var Et=ur($t(),1),ar=Object.fromEntries(new URLSearchParams(location.search));console.log(ar);var hr=fetch(`${ar.baseurl}WebRTCInfo/?session=${ar.session}`,{cache:"no-store"}).then(o=>o.text()).then(o=>(console.log(`GOT TOML: ${o}`),Et.parse(o)));console.log(hr);var Ne=class{constructor(r){this.Message=r,this.Timestamp=new Date().getTime()+"000"}static checkAndReturn(r){let n=parseInt(new Date().getTime()+"000");if(Math.abs(parseInt(r.Timestamp-n))>15*1e3*1e3)throw new Error("Message too old or too new.");return r.Message}};var bn="SHA-256",xe=class{#e;MAC;MAC8;Message;key;constructor(r,n){window.hashAlgo=bn,this.MessageWithTime=r,this.Message8=new Uint8Array(r.length),this.key=n;let l=new TextEncoder;l.encodeInto(r,this.Message8),this.#e=new Uint8Array(n.length),l.encodeInto(n,this.#e)}static async verifyHmacSHA256(r,n,l){let a=new TextEncoder,t=await crypto.subtle.importKey("raw",a.encode(n),{name:"HMAC",hash:"SHA-256"},!1,["sign"]),p=await crypto.subtle.sign("HMAC",t,a.encode(r)),$=[...new Uint8Array(p)].map(C=>C.toString(16).padStart(2,"0")).join("");return $!==l?(console.error("HMAC verification failed",{message:r,key:n,expectedHex:l,computedHex:$}),!1):!0}async hmacSHA256(r,n){let l=new TextEncoder,a=await crypto.subtle.importKey("raw",l.encode(n),{name:"HMAC",hash:"SHA-256"},!1,["sign"]),t=await crypto.subtle.sign("HMAC",a,l.encode(r));return[...new Uint8Array(t)].map(p=>p.toString(16).padStart(2,"0")).join("")}async compute(){this.MAC8=await this.hmacSHA256(this.MessageWithTime,this.key),this.MAC="";for(let r=0;r<this.MAC8.length;r++)this.MAC+=this.MAC8[r].toString(16).padStart(2,0);return console.log("MAC8 follows for: ${} ${}"),console.log(this.MAC8),this.MAC=this.MAC8,this.MAC8;return delete this.MAC8,delete this.Message8,this.MAC8}static async verifyAndReturn(r,n,l){console.log(`called to verify: ${r}, ${l}`);let a=new TextEncoder,t=new Uint8Array(n.length),p=new Uint8Array(r.length),$=l.split(""),C=[],b="";for(console.log($);$.length!==0;){let O=$.splice(0,2);C.push(parseInt(O.join(""),16))}p=new Uint8Array(r.length),a.encodeInto(r,p),p=a.encode(r);let u=new Uint8Array(C);a.encodeInto(n,t),t=a.encode(n);let v=await this.verifyHmacSHA256(r,n,l),W="";var M="";for(let O=0;O<W.length;O++)M+=W[O].toString(16).padStart(2,0);if(v===!1)throw new Error(`MAC Error, expected: ${l}, got ${M}`);return r}};var Cr=ur(Wt(),1),Ye=ur(Jt(),1);globalThis.Buffer=globalThis.Buffer||Cr.Buffer;var fs=Object.fromEntries(new URLSearchParams(location.search));console.log(fs);async function Br(){var o=await hr;window.conf=o,console.assert(o.WebRTCMode=="Offer"),o.WebRTCMode!="Offer"&&(console.error("Wrong TOOL: Wrong WebRTCMode, retrying in 1000ms..."),window.setTimeout(Br,1e3)),console.assert(o.PublishType=="ws");let r=!1,n,l=F=>{t.push(F)},a=F=>{p.push(F)},t=[],p=[],$=!1,C=1024*1024,b=!1;if(b){let j=function(ce){xe.verifyAndReturn("hello",F,ce)},F=new xe("hello","hello"),ie;ie=await F.compute(),console.log(`stmac: ${ie}`),j(ie),console.log(F)}let u=o.PublishEndpoint.split("//").slice(1).join("//"),v=`wss://${o.PublishAuthUser}:${o.PublishAuthPass}@${u}?user=${o.PublishAuthUser}&pass=${o.PublishAuthPass}`;console.log(v);let W=new WebSocket(v);W.addEventListener("message",F=>{console.log(F.data),n=F.data,X()}),W.addEventListener("close",F=>{console.warn("websocket: closed"),!window.vncDC||window.vncDC.readyState!=="open"?(console.log(`window.vncDC: ${window.vncDC}`),window.vncDC&&console.log(`window.vncDC.readyState: ${window.vncDC.readyState}`),Br()):console.log("WS disconnect: Not calling initDC() again.")}),W.addEventListener("open",F=>{ue()});let M=`${o.Address}:${o.Port}`;console.log(`Should listen on: ${M}`);let O=[];for(let F in o.ICEServers){let ie={};for(let j in o.ICEServers[F])Object.defineProperty(ie,j.toLowerCase(),{value:o.ICEServers[F][j],enumerable:!0});O.push(ie)}let Y={iceServers:O};b&&console.log(JSON.stringify(Y));let fe=F=>{console.log("Peer connection state: "+JSON.stringify(F)+" "+L.connectionState),L.connectionState=="connected"&&(r=!0)},te=F=>console.dir(F),I=F=>console.dir(F),_=F=>{b&&console.dir(F),F.candidate==null&&console.log(L.localDescription)},S=F=>L.createOffer().then(T),T=F=>{console.dir(F),L.setLocalDescription(F)},Q=()=>{window.Link(),console.log("DC open"),console.log(`to_dc_queue: ${t.length}`),l=F=>{_e=0,D.bufferedAmount<C&&D.send(F)},t.forEach(F=>l(F))},H=()=>{console.log("DC closed")},K=F=>{b&&console.log(`DC incoming: ${JSON.stringify(F.data.byteLength)}`),a(Cr.Buffer.from(F.data))},L=new RTCPeerConnection(Y),D,X;function ue(){L.addEventListener("connectionstatechange",fe),L.addEventListener("icegatheringerror",te),L.addEventListener("icegatheringstatechange",I),L.addEventListener("icecandidate",_),D=L.createDataChannel("data",{ordered:!0}),window.vncDC=D,D.addEventListener("message",K),D.addEventListener("open",Q),D.addEventListener("close",H),D.binaryType="arraybuffer",L.addEventListener("negotiationneeded",S),b&&setTimeout(()=>console.log("Gathered so far: "+JSON.stringify(L.localDescription)),5e3),setTimeout(()=>F(JSON.stringify(L.localDescription)),2500);function F(j){let ce=new Ne(Ye.base64encode(j)),ge=JSON.stringify(ce),Ee=new xe(ge,o.PeerPSK);Ee.compute().then(()=>ie(Ee))}function ie(j){window.currentSent=j,console.log(JSON.stringify(j)),W.send(JSON.stringify(j))}X=async function(){let j=JSON.parse(n);console.log(j);let ce=await xe.verifyAndReturn(j.MessageWithTime,o.PeerPSK,j.MAC);console.log({hV:ce});let ge=Ne.checkAndReturn(JSON.parse(ce));console.log({tV:ge}),L.setRemoteDescription(new RTCSessionDescription(JSON.parse(Ye.base64decode(ge))))}}let _e=0,Ue=0;setInterval(function(){_e++,Ue++,_e>=o.TimeoutCountMax||Ue>=o.TimeoutCountMax},1e3)}window.initDC=Br;})();
+/*! Bundled license information:
+
+ieee754/index.js:
+  (*! ieee754. BSD-3-Clause License. Feross Aboukhadijeh <https://feross.org/opensource> *)
+
+buffer/index.js:
+  (*!
+   * The buffer module from node.js, for the browser.
+   *
+   * @author   Feross Aboukhadijeh <https://feross.org>
+   * @license  MIT
+   *)
+*/
+//# sourceMappingURL=bundle.min.js.map
+</script>
+
+    <script>// app/error-handler.js
+function handleError(event, err) {
+  try {
+    const msg = document.getElementById("noVNC_fallback_errormsg");
+    if (event.message === "ResizeObserver loop completed with undelivered notifications.") {
+      return false;
+    }
+    if (msg.hasChildNodes()) {
+      return false;
+    }
+    let div = document.createElement("div");
+    div.classList.add("noVNC_message");
+    div.appendChild(document.createTextNode(event.message));
+    msg.appendChild(div);
+    if (event.filename) {
+      div = document.createElement("div");
+      div.className = "noVNC_location";
+      let text = event.filename;
+      if (event.lineno !== void 0) {
+        text += ":" + event.lineno;
+        if (event.colno !== void 0) {
+          text += ":" + event.colno;
+        }
+      }
+      div.appendChild(document.createTextNode(text));
+      msg.appendChild(div);
+    }
+    if (err && err.stack) {
+      div = document.createElement("div");
+      div.className = "noVNC_stack";
+      div.appendChild(document.createTextNode(err.stack));
+      msg.appendChild(div);
+    }
+    document.getElementById("noVNC_fallback_error").classList.add("noVNC_open");
+  } catch (exc) {
+    document.write("noVNC encountered an error.");
+  }
+  try {
+    if (document.activeElement) {
+      document.activeElement.blur();
+    }
+    let keyboardFocusable = "a[href], button, input, textarea, select, details, [tabindex]";
+    document.querySelectorAll(keyboardFocusable).forEach((elem) => {
+      elem.setAttribute("tabindex", "-1");
+    });
+  } catch (exc) {
+  }
+  return false;
+}
+window.addEventListener("error", (evt) => handleError(evt, evt.error));
+window.addEventListener("unhandledrejection", (evt) => handleError(evt.reason, evt.reason));
+//# sourceMappingURL=error-handler.min.js.map
+</script>
+
+    <script type="module">
+        import UI from "./app/ui.js";
+        import * as Log from './core/util/logging.js';
+        import RFB from './core/rfb.js';
+
+	const F23 = 0xFFD4;  // Add this line
+
+        let response;
+        let rfb;
+        let desktopName;
+
+        let defaults = {};
+        let mandatory = {};
+
+        // Default settings will be loaded from defaults.json. Mandatory
+        // settings will be loaded from mandatory.json, which the user
+        // cannot change.
+
+        try {
+            response = await fetch('./defaults.json');
+            if (!response.ok) {
+                throw Error("" + response.status + " " + response.statusText);
+            }
+
+            defaults = await response.json();
+        } catch (err) {
+            Log.Error("Couldn't fetch defaults.json: " + err);
+        }
+
+        try {
+            response = await fetch('./mandatory.json');
+            if (!response.ok) {
+                throw Error("" + response.status + " " + response.statusText);
+            }
+
+            mandatory = await response.json();
+        } catch (err) {
+            Log.Error("Couldn't fetch mandatory.json: " + err);
+        }
+
+        // Read parameters specified in the URL query string
+        // By default, use the host and port of server that served this file
+        function readQueryVariable(name, defaultValue) {
+            // A URL with a query parameter can look like this:
+            // https://www.example.com?myqueryparam=myvalue
+            //
+            // Note that we use location.href instead of location.search
+            // because Firefox < 53 has a bug w.r.t location.search
+            const re = new RegExp('.*[?&]' + name + '=([^&#]*)'),
+                  match = document.location.href.match(re);
+
+            if (match) {
+                // We have to decode the URL since want the cleartext value
+                return decodeURIComponent(match[1]);
+            }
+
+            return defaultValue;
+        }
+
+        const password = readQueryVariable('password');
+
+        // Event handlers for RFB
+        function connectedToServer(e) {
+            document.getElementById('noVNC_status').textContent = "Connected to " + desktopName;
+	        attachKeepAlive(rfb);  // Add this line
+        }
+
+        function disconnectedFromServer(e) {
+            if (e.detail.clean) {
+                document.getElementById('noVNC_status').textContent = "Disconnected, retrying...";
+                initDC();
+            } else {
+                document.getElementById('noVNC_status').textContent = "Something went wrong, connection is closed, retrying...";
+                initDC();
+            }
+        }
+
+        function credentialsAreRequired(e) {
+            const password = prompt("Password required:");
+            rfb.sendCredentials({ password: password });
+        }
+
+        function updateDesktopName(e) {
+            desktopName = e.detail.name;
+        }
+
+	function attachKeepAlive(rfbInstance, intervalMs = 5000) {
+    let timerId;
+
+    function sendKeepAlive() {
+        try {
+            rfbInstance.sendKey(F23, true);   // press
+            rfbInstance.sendKey(F23, false);  // release
+            console.info("[KeepAlive] Sent F23 press/release");
+        } catch (err) {
+            console.error("[KeepAlive] Error sending keep-alive:", err);
+        }
+    }
+
+    function start() {
+        stop();
+        timerId = setInterval(sendKeepAlive, intervalMs);
+        console.log(`[KeepAlive] Started with interval ${intervalMs}ms`);
+    }
+
+    function stop() {
+        if (timerId) {
+            clearInterval(timerId);
+            timerId = null;
+            console.log("[KeepAlive] Stopped");
+        }
+    }
+
+    rfbInstance.addEventListener("disconnect", stop);
+    start();
+    return { stop };
+}
+
+// Separate function to initialize the UI with the existing RFB connection
+window.initializeUIWithExistingRFB = () => {
+    // Import the UI module and initialize it with our existing RFB connection
+    import('./app/ui.js').then(UI => {
+        console.log('UI module loaded');
+
+        // Start the UI with settings that prevent autoconnection
+        UI.default.start(
+        ).then(() => {
+            console.log('UI started');
+	    window.UI = UI;
+	    //UI.rfb = rfb;
+
+            // Set the RFB object to our existing connection
+            UI.default.rfb = window.rfb;
+
+            // Manually set up the event listeners that would normally be set in connect()
+            UI.default.rfb.addEventListener("connect", UI.default.connectFinished);
+            UI.default.rfb.addEventListener("disconnect", UI.default.disconnectFinished);
+            UI.default.rfb.addEventListener("serververification", UI.default.serverVerify);
+            UI.default.rfb.addEventListener("credentialsrequired", UI.default.credentials);
+            UI.default.rfb.addEventListener("securityfailure", UI.default.securityFailed);
+            UI.default.rfb.addEventListener("clippingviewport", UI.default.updateViewDrag);
+            UI.default.rfb.addEventListener("capabilities", UI.default.updatePowerButton);
+            UI.default.rfb.addEventListener("clipboard", UI.default.clipboardReceive);
+            UI.default.rfb.addEventListener("bell", UI.default.bell);
+            UI.default.rfb.addEventListener("desktopname", UI.default.updateDesktopName);
+
+            // Set the UI state to connected
+            UI.default.connected = true;
+            UI.default.inhibitReconnect = false;
+            //UI.default.updateVisualState('connected');
+	    // Patch the focus method to prevent errors
+if (window.UI && window.UI.default && window.UI.default.rfb) {
+    const originalCloseControlbar = UI.default.closeControlbar;
+    UI.default.closeControlbar = function() {
+        // Don't try to focus until we're sure the RFB object is ready
+        if (this.rfb && typeof this.rfb.focus === 'function') {
+            this.rfb.focus();
+        }
+        // Call the original closeControlbar without the focus call
+        //originalCloseControlbar.call(this);
+    };
+    console.log('Focus method patched');
+}
+            UI.default.updateVisualState('connected');
+	    window.setTimeout(() => {console.log("Trying to update the view..."); window.UI.default.connected = true; window.UI.default.rfb = window.rfb; window.UI.default.updateVisualState("connected")}, 1500);
+
+            // Update the UI elements
+            //UI.default.updatePowerButton();
+            //UI.default.updateViewOnly();
+
+            console.log('UI initialized with existing RFB connection');
+	    //UI.rfb = rfb;
+
+        }).catch(err => {
+            console.error('Error initializing UI:', err);
+        });
+    }).catch(err => {
+        console.error('Error loading UI module:', err);
+    });
+}
+
+// Modified Link() function
+        // Function to create the RFB connection when the data channel is ready
+	// Replace the entire window.Link function with this:
+window.Link = function() {
+    // First, remove the "noVNC_loading" class to stop the loading indicator
+    document.documentElement.classList.remove('noVNC_loading');
+
+    // Hide the connect dialog
+    document.getElementById('noVNC_connect_dlg').style.display = 'none';
+
+    try {
+        // Creating a new RFB object will start a new connection
+        rfb = new RFB(document.getElementById('noVNC_container'), vncDC,
+                     { credentials: { password: password } });
+
+        window.rfb=rfb;
+        // Add listeners to important events from the RFB module
+        rfb.addEventListener("connect", connectedToServer);
+        rfb.addEventListener("disconnect", disconnectedFromServer);
+        rfb.addEventListener("credentialsrequired", credentialsAreRequired);
+        rfb.addEventListener("desktopname", updateDesktopName);
+
+        // Set parameters that can be changed on an active connection
+        rfb.viewOnly = readQueryVariable('view_only', false);
+        rfb.scaleViewport = readQueryVariable('scale', false);
+
+        // Initialize the UI with our existing RFB connection, but don't wait for it
+        setTimeout(initializeUIWithExistingRFB, 500);
+
+        // Initialize UI controls without trying to instantiate UI
+    } catch (error) {
+        console.error("Error initializing RFB connection:", error);
+        document.getElementById('noVNC_status').textContent = "Error: " + error.message;
+    }
+};
+        // Initialize the data channel to start the WebRTC connection
+        initDC();
+    </script>
+</head>
+
+<body>
+
+    <div id="noVNC_fallback_error" class="noVNC_center">
+        <div>
+            <div>noVNC encountered an error:</div>
+            <br>
+            <div id="noVNC_fallback_errormsg"></div>
+        </div>
+    </div>
+
+    <!-- noVNC control bar -->
+    <div id="noVNC_control_bar_anchor" class="noVNC_vcenter">
+
+        <div id="noVNC_control_bar">
+            <div id="noVNC_control_bar_handle" title="Hide/Show the control bar"><div></div></div>
+
+            <div class="noVNC_scroll">
+
+            <h1 class="noVNC_logo" translate="no"><span>no</span><br>VNC</h1>
+
+            <hr>
+
+            <!-- Drag/Pan the viewport -->
+            <input type="image" alt="Drag" src="app/images/drag.svg"
+                id="noVNC_view_drag_button" class="noVNC_button noVNC_hidden"
+                title="Move/Drag viewport">
+
+            <!--noVNC touch device only buttons-->
+            <div id="noVNC_mobile_buttons">
+                <input type="image" alt="Keyboard" src="app/images/keyboard.svg"
+                    id="noVNC_keyboard_button" class="noVNC_button" title="Show keyboard">
+            </div>
+
+            <!-- Extra manual keys -->
+            <input type="image" alt="Extra keys" src="app/images/toggleextrakeys.svg"
+                id="noVNC_toggle_extra_keys_button" class="noVNC_button"
+                title="Show extra keys">
+            <div class="noVNC_vcenter">
+            <div id="noVNC_modifiers" class="noVNC_panel">
+                <input type="image" alt="Ctrl" src="app/images/ctrl.svg"
+                    id="noVNC_toggle_ctrl_button" class="noVNC_button"
+                    title="Toggle Ctrl">
+                <input type="image" alt="Alt" src="app/images/alt.svg"
+                    id="noVNC_toggle_alt_button" class="noVNC_button"
+                    title="Toggle Alt">
+                <input type="image" alt="Windows" src="app/images/windows.svg"
+                    id="noVNC_toggle_windows_button" class="noVNC_button"
+                    title="Toggle Windows">
+                <input type="image" alt="Tab" src="app/images/tab.svg"
+                    id="noVNC_send_tab_button" class="noVNC_button"
+                    title="Send Tab">
+                <input type="image" alt="Esc" src="app/images/esc.svg"
+                    id="noVNC_send_esc_button" class="noVNC_button"
+                    title="Send Escape">
+                <input type="image" alt="Ctrl+Alt+Del" src="app/images/ctrlaltdel.svg"
+                    id="noVNC_send_ctrl_alt_del_button" class="noVNC_button"
+                    title="Send Ctrl-Alt-Del">
+            </div>
+            </div>
+
+            <!-- Shutdown/Reboot -->
+            <input type="image" alt="Shutdown/Reboot" src="app/images/power.svg"
+                id="noVNC_power_button" class="noVNC_button"
+                title="Shutdown/Reboot...">
+            <div class="noVNC_vcenter">
+            <div id="noVNC_power" class="noVNC_panel">
+                <div class="noVNC_heading">
+                    <svg>
+  <defs
+     id="defs4" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#959595"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="1"
+     inkscape:cx="9.3159849"
+     inkscape:cy="13.436208"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     units="px"
+     inkscape:snap-bbox="true"
+     inkscape:bbox-paths="true"
+     inkscape:bbox-nodes="true"
+     inkscape:snap-bbox-edge-midpoints="true"
+     inkscape:object-paths="true"
+     showguides="true"
+     inkscape:window-width="1920"
+     inkscape:window-height="1136"
+     inkscape:window-x="1920"
+     inkscape:window-y="27"
+     inkscape:window-maximized="1"
+     inkscape:snap-smooth-nodes="true"
+     inkscape:object-nodes="true"
+     inkscape:snap-intersection-paths="true"
+     inkscape:snap-nodes="true"
+     inkscape:snap-global="true">
+    <inkscape:grid
+       type="xygrid"
+       id="grid4136" />
+  </sodipodi:namedview>
+  <metadata
+     id="metadata7">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(0,-1027.3622)">
+    <path
+       style="color:#000000;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:medium;line-height:normal;font-family:sans-serif;text-indent:0;text-align:start;text-decoration:none;text-decoration-line:none;text-decoration-style:solid;text-decoration-color:#000000;letter-spacing:normal;word-spacing:normal;text-transform:none;direction:ltr;block-progression:tb;writing-mode:lr-tb;baseline-shift:baseline;text-anchor:start;white-space:normal;clip-rule:nonzero;display:inline;overflow:visible;visibility:visible;opacity:1;isolation:auto;mix-blend-mode:normal;color-interpolation:sRGB;color-interpolation-filters:linearRGB;solid-color:#000000;solid-opacity:1;fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;color-rendering:auto;image-rendering:auto;shape-rendering:auto;text-rendering:auto;enable-background:accumulate"
+       d="M 9 6.8183594 C 6.3418164 8.1213032 4.5 10.849161 4.5 14 C 4.5 18.4065 8.0935666 22 12.5 22 C 16.906433 22 20.5 18.4065 20.5 14 C 20.5 10.849161 18.658184 8.1213032 16 6.8183594 L 16 9.125 C 17.514327 10.211757 18.5 11.984508 18.5 14 C 18.5 17.3256 15.825553 20 12.5 20 C 9.1744469 20 6.5 17.3256 6.5 14 C 6.5 11.984508 7.4856727 10.211757 9 9.125 L 9 6.8183594 z "
+       transform="translate(0,1027.3622)"
+       id="path6140" />
+    <path
+       style="fill:none;fill-rule:evenodd;stroke:#ffffff;stroke-width:3;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 12.5,1031.8836 0,6.4786"
+       id="path6142"
+       inkscape:connector-curvature="0"
+       sodipodi:nodetypes="cc" />
+  </g>
+</svg> Power
+                </div>
+                <input type="button" id="noVNC_shutdown_button" value="Shutdown">
+                <input type="button" id="noVNC_reboot_button" value="Reboot">
+                <input type="button" id="noVNC_reset_button" value="Reset">
+            </div>
+            </div>
+
+            <!-- Clipboard -->
+            <input type="image" alt="Clipboard" src="app/images/clipboard.svg"
+                id="noVNC_clipboard_button" class="noVNC_button"
+                title="Clipboard">
+            <div class="noVNC_vcenter">
+            <div id="noVNC_clipboard" class="noVNC_panel">
+                <div class="noVNC_heading">
+                    <svg>
+  <defs
+     id="defs4" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#959595"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="1"
+     inkscape:cx="15.366606"
+     inkscape:cy="16.42981"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     units="px"
+     inkscape:snap-bbox="true"
+     inkscape:bbox-paths="true"
+     inkscape:bbox-nodes="true"
+     inkscape:snap-bbox-edge-midpoints="true"
+     inkscape:object-paths="true"
+     showguides="true"
+     inkscape:window-width="1920"
+     inkscape:window-height="1136"
+     inkscape:window-x="1920"
+     inkscape:window-y="27"
+     inkscape:window-maximized="1"
+     inkscape:snap-smooth-nodes="true"
+     inkscape:object-nodes="true"
+     inkscape:snap-intersection-paths="true"
+     inkscape:snap-nodes="true"
+     inkscape:snap-global="true">
+    <inkscape:grid
+       type="xygrid"
+       id="grid4136" />
+  </sodipodi:namedview>
+  <metadata
+     id="metadata7">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(0,-1027.3622)">
+    <path
+       style="opacity:1;fill:none;fill-opacity:1;stroke:#ffffff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+       d="M 9,6 6,6 C 5.4459889,6 5,6.4459889 5,7 l 0,13 c 0,0.554011 0.4459889,1 1,1 l 13,0 c 0.554011,0 1,-0.445989 1,-1 L 20,7 C 20,6.4459889 19.554011,6 19,6 l -3,0"
+       transform="translate(0,1027.3622)"
+       id="rect6083"
+       inkscape:connector-curvature="0"
+       sodipodi:nodetypes="cssssssssc" />
+    <rect
+       style="opacity:1;fill:none;fill-opacity:1;stroke:#ffffff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+       id="rect6085"
+       width="7"
+       height="4"
+       x="9"
+       y="1031.3622"
+       ry="1.00002" />
+    <path
+       style="fill:none;fill-rule:evenodd;stroke:#ffffff;stroke-width:1;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.50196081"
+       d="m 8.5071212,1038.8622 7.9999998,0"
+       id="path6087"
+       inkscape:connector-curvature="0" />
+    <path
+       style="fill:none;fill-rule:evenodd;stroke:#ffffff;stroke-width:1;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.50196081"
+       d="m 8.5071212,1041.8622 3.9999998,0"
+       id="path6089"
+       inkscape:connector-curvature="0" />
+    <path
+       style="fill:none;fill-rule:evenodd;stroke:#ffffff;stroke-width:1;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.50196081"
+       d="m 8.5071212,1044.8622 5.9999998,0"
+       id="path6091"
+       inkscape:connector-curvature="0" />
+  </g>
+</svg> Clipboard
+                </div>
+                <p class="noVNC_subheading">
+                    Edit clipboard content in the textarea below.
+                </p>
+                <textarea id="noVNC_clipboard_text" rows=5></textarea>
+            </div>
+            </div>
+
+            <!-- Toggle fullscreen -->
+            <input type="image" alt="Full screen" src="app/images/fullscreen.svg"
+                id="noVNC_fullscreen_button" class="noVNC_button noVNC_hidden"
+                title="Full screen">
+
+            <!-- Settings -->
+            <input type="image" alt="Settings" src="app/images/settings.svg"
+                id="noVNC_settings_button" class="noVNC_button"
+                title="Settings">
+            <div class="noVNC_vcenter">
+            <div id="noVNC_settings" class="noVNC_panel">
+                <div class="noVNC_heading">
+                    <svg>
+  <defs
+     id="defs4" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#959595"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="22.627417"
+     inkscape:cx="14.69683"
+     inkscape:cy="8.8039511"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     showgrid="true"
+     units="px"
+     inkscape:snap-bbox="true"
+     inkscape:bbox-paths="true"
+     inkscape:bbox-nodes="true"
+     inkscape:snap-bbox-edge-midpoints="true"
+     inkscape:object-paths="true"
+     showguides="false"
+     inkscape:window-width="1920"
+     inkscape:window-height="1136"
+     inkscape:window-x="1920"
+     inkscape:window-y="27"
+     inkscape:window-maximized="1">
+    <inkscape:grid
+       type="xygrid"
+       id="grid4136" />
+  </sodipodi:namedview>
+  <metadata
+     id="metadata7">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(0,-1027.3622)">
+    <path
+       style="opacity:1;fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:1;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+       d="M 11 3 L 11 5.1601562 A 7.5 7.5 0 0 0 8.3671875 6.2460938 L 6.84375 4.7226562 L 4.7226562 6.84375 L 6.2480469 8.3691406 A 7.5 7.5 0 0 0 5.1523438 11 L 3 11 L 3 14 L 5.1601562 14 A 7.5 7.5 0 0 0 6.2460938 16.632812 L 4.7226562 18.15625 L 6.84375 20.277344 L 8.3691406 18.751953 A 7.5 7.5 0 0 0 11 19.847656 L 11 22 L 14 22 L 14 19.839844 A 7.5 7.5 0 0 0 16.632812 18.753906 L 18.15625 20.277344 L 20.277344 18.15625 L 18.751953 16.630859 A 7.5 7.5 0 0 0 19.847656 14 L 22 14 L 22 11 L 19.839844 11 A 7.5 7.5 0 0 0 18.753906 8.3671875 L 20.277344 6.84375 L 18.15625 4.7226562 L 16.630859 6.2480469 A 7.5 7.5 0 0 0 14 5.1523438 L 14 3 L 11 3 z M 12.5 10 A 2.5 2.5 0 0 1 15 12.5 A 2.5 2.5 0 0 1 12.5 15 A 2.5 2.5 0 0 1 10 12.5 A 2.5 2.5 0 0 1 12.5 10 z "
+       transform="translate(0,1027.3622)"
+       id="rect4967" />
+  </g>
+</svg> Settings
+                </div>
+                <ul>
+                    <li>
+                        <label>
+                            <input id="noVNC_setting_shared" type="checkbox"
+                                   class="toggle">
+                            Shared mode
+                        </label>
+                    </li>
+                    <li>
+                        <label>
+                            <input id="noVNC_setting_view_only" type="checkbox"
+                                   class="toggle">
+                            View only
+                        </label>
+                    </li>
+                    <li><hr></li>
+                    <li>
+                        <label>
+                            <input id="noVNC_setting_view_clip" type="checkbox"
+                                   class="toggle">
+                            Clip to window
+                        </label>
+                    </li>
+                    <li>
+                        <label for="noVNC_setting_resize">Scaling mode:</label>
+                        <select id="noVNC_setting_resize" name="vncResize">
+                            <option value="off">None</option>
+                            <option value="scale">Local scaling</option>
+                            <option value="remote">Remote resizing</option>
+                        </select>
+                    </li>
+                    <li><hr></li>
+                    <li>
+                        <div class="noVNC_expander">Advanced</div>
+                        <div><ul>
+                            <li>
+                                <label for="noVNC_setting_quality">Quality:</label>
+                                <input id="noVNC_setting_quality" type="range" min="0" max="9" value="6">
+                            </li>
+                            <li>
+                                <label for="noVNC_setting_compression">Compression level:</label>
+                                <input id="noVNC_setting_compression" type="range" min="0" max="9" value="2">
+                            </li>
+                            <li><hr></li>
+                            <li>
+                                <label for="noVNC_setting_repeaterID">Repeater ID:</label>
+                                <input id="noVNC_setting_repeaterID" type="text" value="">
+                            </li>
+                            <li>
+                                <div class="noVNC_expander">WebSocket</div>
+                                <div><ul>
+                                    <li>
+                                        <label>
+                                            <input id="noVNC_setting_encrypt" type="checkbox"
+                                                   class="toggle">
+                                            Encrypt
+                                        </label>
+                                    </li>
+                                    <li>
+                                        <label for="noVNC_setting_host">Host:</label>
+                                        <input id="noVNC_setting_host">
+                                    </li>
+                                    <li>
+                                        <label for="noVNC_setting_port">Port:</label>
+                                        <input id="noVNC_setting_port" type="number">
+                                    </li>
+                                    <li>
+                                        <label for="noVNC_setting_path">Path:</label>
+                                        <input id="noVNC_setting_path" type="text" value="websockify">
+                                    </li>
+                                </ul></div>
+                            </li>
+                            <li><hr></li>
+                            <li>
+                                <label>
+                                    <input id="noVNC_setting_reconnect" type="checkbox"
+                                           class="toggle">
+                                    Automatic reconnect
+                                </label>
+                            </li>
+                            <li>
+                                <label for="noVNC_setting_reconnect_delay">Reconnect delay (ms):</label>
+                                <input id="noVNC_setting_reconnect_delay" type="number">
+                            </li>
+                            <li><hr></li>
+                            <li>
+                                <label>
+                                    <input id="noVNC_setting_show_dot" type="checkbox"
+                                           class="toggle">
+                                    Show dot when no cursor
+                                </label>
+                            </li>
+                            <li><hr></li>
+                            <!-- Logging selection dropdown -->
+                            <li>
+                                <label>Logging:
+                                    <select id="noVNC_setting_logging" name="vncLogging">
+                                    </select>
+                                </label>
+                            </li>
+                        </ul></div>
+                    </li>
+                    <li class="noVNC_version_separator"><hr></li>
+                    <li class="noVNC_version_wrapper">
+                        <span>Version:</span>
+                        <span class="noVNC_version"></span>
+                    </li>
+                </ul>
+            </div>
+            </div>
+
+            <!-- Connection controls -->
+            <input type="image" alt="Disconnect" src="app/images/disconnect.svg"
+                id="noVNC_disconnect_button" class="noVNC_button"
+                title="Disconnect">
+
+            </div>
+        </div>
+
+    </div> <!-- End of noVNC_control_bar -->
+
+    <div id="noVNC_hint_anchor" class="noVNC_vcenter">
+        <div id="noVNC_control_bar_hint">
+        </div>
+    </div>
+
+    <!-- Status dialog -->
+    <div id="noVNC_status"></div>
+
+    <!-- Connect button -->
+    <div class="noVNC_center">
+        <div id="noVNC_connect_dlg">
+            <p class="noVNC_logo" translate="no"><span>no</span>VNC</p>
+            <div>
+                <button id="noVNC_connect_button">
+                    <svg>
+  <defs
+     id="defs4" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#959595"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="1"
+     inkscape:cx="37.14834"
+     inkscape:cy="1.9525926"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     units="px"
+     inkscape:snap-bbox="true"
+     inkscape:bbox-paths="true"
+     inkscape:bbox-nodes="true"
+     inkscape:snap-bbox-edge-midpoints="true"
+     inkscape:object-paths="true"
+     showguides="true"
+     inkscape:window-width="1920"
+     inkscape:window-height="1136"
+     inkscape:window-x="1920"
+     inkscape:window-y="27"
+     inkscape:window-maximized="1"
+     inkscape:snap-smooth-nodes="true"
+     inkscape:object-nodes="true"
+     inkscape:snap-intersection-paths="true"
+     inkscape:snap-nodes="true">
+    <inkscape:grid
+       type="xygrid"
+       id="grid4136" />
+  </sodipodi:namedview>
+  <metadata
+     id="metadata7">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(0,-1027.3622)">
+    <g
+       id="g5103"
+       transform="matrix(0.70710678,-0.70710678,0.70710678,0.70710678,-729.15757,315.8823)">
+      <path
+         sodipodi:nodetypes="cssssc"
+         inkscape:connector-curvature="0"
+         id="rect5096"
+         d="m 11,1040.3622 -5,0 c -1.108,0 -2,-0.892 -2,-2 l 0,-4 c 0,-1.108 0.892,-2 2,-2 l 5,0"
+         style="opacity:1;fill:none;fill-opacity:1;stroke:#ffffff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1" />
+      <path
+         style="opacity:1;fill:none;fill-opacity:1;stroke:#ffffff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
+         d="m 14,1032.3622 5,0 c 1.108,0 2,0.892 2,2 l 0,4 c 0,1.108 -0.892,2 -2,2 l -5,0"
+         id="path5099"
+         inkscape:connector-curvature="0"
+         sodipodi:nodetypes="cssssc" />
+      <path
+         inkscape:connector-curvature="0"
+         id="path5101"
+         d="m 9,1036.3622 7,0"
+         style="fill:none;fill-rule:evenodd;stroke:#ffffff;stroke-width:2;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
+    </g>
+  </g>
+</svg> Connect
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Server key verification dialog -->
+    <div class="noVNC_center noVNC_connect_layer">
+    <div id="noVNC_verify_server_dlg" class="noVNC_panel"><form>
+        <div class="noVNC_heading">
+            Server identity
+        </div>
+        <div>
+            The server has provided the following identifying information:
+        </div>
+        <div id="noVNC_fingerprint_block">
+            Fingerprint:
+            <span id="noVNC_fingerprint"></span>
+        </div>
+        <div>
+            Please verify that the information is correct and press
+            "Approve". Otherwise press "Reject".
+        </div>
+        <div class="button_row">
+            <input id="noVNC_approve_server_button" type="submit" value="Approve">
+            <input id="noVNC_reject_server_button" type="button" value="Reject">
+        </div>
+    </form></div>
+    </div>
+
+    <!-- Password dialog -->
+    <div class="noVNC_center noVNC_connect_layer">
+    <div id="noVNC_credentials_dlg" class="noVNC_panel"><form>
+        <div class="noVNC_heading">
+            Credentials
+        </div>
+        <div id="noVNC_username_block">
+            <label for="noVNC_username_input">Username:</label>
+            <input id="noVNC_username_input">
+        </div>
+        <div id="noVNC_password_block">
+            <label for="noVNC_password_input">Password:</label>
+            <input id="noVNC_password_input" type="password">
+        </div>
+        <div class="button_row">
+            <input id="noVNC_credentials_button" type="submit" value="Send credentials">
+        </div>
+    </form></div>
+    </div>
+
+    <!-- Transition screens -->
+    <div id="noVNC_transition">
+        <div id="noVNC_transition_text"></div>
+        <div>
+        <input type="button" id="noVNC_cancel_reconnect_button" value="Cancel">
+        </div>
+        <div class="noVNC_spinner"></div>
+    </div>
+
+    <!-- This is where the RFB elements will attach -->
+    <div id="noVNC_container">
+        <!-- Note that Google Chrome on Android doesn't respect any of these,
+             html attributes which attempt to disable text suggestions on the
+             on-screen keyboard. Let's hope Chrome implements the ime-mode
+             style for example -->
+        <textarea id="noVNC_keyboardinput" autocapitalize="off"
+            autocomplete="off" spellcheck="false" tabindex="-1"></textarea>
+    </div>
+
+    <audio id="noVNC_bell">
+        <source src="app/sounds/bell.oga" type="audio/ogg">
+        <source src="app/sounds/bell.mp3" type="audio/mpeg">
+    </audio>
+ </body>
+</html>
+
