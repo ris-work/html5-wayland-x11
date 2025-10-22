@@ -51,14 +51,23 @@
          (and then extracted at runtime) rather than placed alongside the exe -->
       <ExcludeFromSingleFile>false</ExcludeFromSingleFile>
     </Content>
+    <Content Remove="static/node_modules\**" />
+    <Compile Remove="static/node_modules\**" />
+    <EmbeddedResource Remove="static/node_modules\**" />
+    <None Remove="static/node_modules\**" />
+    <Content Remove="static/noVNC\**" />
+    <Compile Remove="static/noVNC\**" />
+    <EmbeddedResource Remove="static/noVNC\**" />
+    <None Remove="static/noVNC\**" />
     <Content Remove="static/browser/node_modules\**" />
     <Compile Remove="static/browser/node_modules\**" />
     <EmbeddedResource Remove="static/browser/node_modules\**" />
     <None Remove="static/browser/node_modules\**" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="static\**\*">
-      <LogicalName>static/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
-    </EmbeddedResource>
+  <EmbeddedResource Include="static\**\*"
+                   Exclude="static\node_modules\**;static\noVNC\**;static\browser\node_modules\**">
+    <LogicalName>static/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+  </EmbeddedResource>
   </ItemGroup>
 </Project>
