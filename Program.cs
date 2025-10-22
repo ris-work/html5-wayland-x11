@@ -47,7 +47,7 @@ bool RECORD_SCREEN = false;
 string? PAGE = Environment.GetEnvironmentVariable("PAGE");
 int W = int.Parse(RESOLUTION_WIDTH ?? "1024");
 int H = int.Parse(RESOLUTION_HEIGHT ?? "768");
-if (PAGE == null) PAGE = "vnc_lite.html";
+if (PAGE == null) PAGE = "vnc_lite.min.html";
 approvedCommands = approvedCommands.ToList().Append(DEFAULT_PROGRAM_NAME).ToArray();
 if (string.IsNullOrEmpty(DEFAULT_PROGRAM_NAME))
 {
@@ -937,11 +937,11 @@ app.MapGet("/", async Task<IResult> (HttpContext context) =>
     await Task.Delay(150);
     if (!session.IsWebRTCSession)
     {
-        return IsHeavySessionRequested ? Results.Redirect($"{BASE_PATH}static/vnc.html?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}") : Results.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}");
+        return IsHeavySessionRequested ? Results.Redirect($"{BASE_PATH}static/vnc.min.html?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}") : Results.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}");
     }
     else
     {
-        return IsHeavySessionRequested ? Results.Redirect($"{BASE_PATH}static/vncrtcheavy.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}") : Results.Redirect($"{BASE_PATH}static/vncrtckeepalive.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}");
+        return IsHeavySessionRequested ? Results.Redirect($"{BASE_PATH}static/vncrtcheavy.min.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}") : Results.Redirect($"{BASE_PATH}static/vncrtckeepalive.min.html?baseurl={BASE_PATH}&session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true{extraQs}");
     }
     //context.Response.Redirect($"{BASE_PATH}static/{PAGE}?session={cookie}&path={(BASE_PATH == "/" ? "/" : BASE_PATH)}{targetApp}/ws&autoconnect=true");
 });

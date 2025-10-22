@@ -15,7 +15,6 @@
         http://example.com/?host=HOST&port=PORT&scale=true
     -->
     <title>noVNC</title>
-  <script src="offer-listen.js"></script>
 
     <style>
 
@@ -58,61 +57,23 @@
 
     <script type="module" crossorigin="anonymous">
         // RFB holds the API to connect and communicate with a VNC server
-        import RFB from './core/rfb.js';
+        import RFB from './core/rfb.min.js';
 
         let rfb;
         let desktopName;
-	  const F23 = 0xFFD4;
-
-
-function attachKeepAlive(rfbInstance, intervalMs = 5000) {
-    let timerId;
-
-    function sendKeepAlive() {
-        try {
-	    rfb.sendKey(F23, true);   // press
-    rfb.sendKey(F23, false);  // release
-    console.info("[KeepAlive] Sent F23 press/release");
-        } catch (err) {
-            console.error("[KeepAlive] Error requesting update:", err);
-        }
-    }
-
-    function start() {
-        stop();
-        timerId = setInterval(sendKeepAlive, intervalMs);
-        console.log(`[KeepAlive] Started with interval ${intervalMs}ms`);
-    }
-
-    function stop() {
-        if (timerId) {
-            clearInterval(timerId);
-            timerId = null;
-            console.log("[KeepAlive] Stopped");
-        }
-    }
-
-    rfbInstance.addEventListener("disconnect", stop);
-    start();
-    return { stop };
-}
-
 
         // When this function is called we have
         // successfully connected to a server
         function connectedToServer(e) {
             status("Connected to " + desktopName);
-	    attachKeepAlive(rfb);
         }
 
         // This function is called when we are disconnected
         function disconnectedFromServer(e) {
             if (e.detail.clean) {
-                status("Disconnected, retrying...");
-		initDC();
+                status("Disconnected");
             } else {
-                status("Something went wrong, connection is closed, retrying...");
-		initDC();
+                status("Something went wrong, connection is closed");
             }
         }
 
@@ -190,10 +151,9 @@ function attachKeepAlive(rfbInstance, intervalMs = 5000) {
             url += ':' + port;
         }
         url += '/' + path;
-	window.Link = function (){
 
         // Creating a new RFB object will start a new connection
-        rfb = new RFB(document.getElementById('screen'), vncDC,
+        rfb = new RFB(document.getElementById('screen'), url,
                       { credentials: { password: password } });
 
         // Add listeners to important events from the RFB module
@@ -205,8 +165,6 @@ function attachKeepAlive(rfbInstance, intervalMs = 5000) {
         // Set parameters that can be changed on an active connection
         rfb.viewOnly = readQueryVariable('view_only', false);
         rfb.scaleViewport = readQueryVariable('scale', false);
-	}
-	initDC();
     </script>
 </head>
 
@@ -220,3 +178,4 @@ function attachKeepAlive(rfbInstance, intervalMs = 5000) {
     </div>
 </body>
 </html>
+
