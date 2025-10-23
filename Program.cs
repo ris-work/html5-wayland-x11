@@ -528,11 +528,7 @@ async Task<ActiveSessions> StartWebRTCSession(string cookie,
             Logger.Log($"Warning: Wayland server on port {RTSock} did not open");
         await Task.Delay(1000);
         wayVncLauncherCommand = "swaymsg";
-        wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"while :; rm -f {USock}; do wayvnc -v -C /dev/null --unix-socket {USock} >{RTSock}.log 2>&1; echo Restarting: wayvnc {RTSock}@{USock}; rm {USock}; [ -S \\\\\\\"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\\\\\\\" ] && echo Sway still alive || break; sleep 0.2; done\\\"\"";
-	wayVncLauncherCommand = "swaymsg";
-wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"count=0; while [ $count -lt 20 ]; do rm -f {USock}; wayvnc -v -C /dev/null --unix-socket {USock} >>{RTSock}.log 2>&1; echo Restarting: wayvnc {RTSock}@{USock} attempt $((count+1))/20; rm {USock}; [ -S \\\\\\\"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\\\\\\\" ] && echo Sway still alive || break; count=$((count+1)); sleep 1; done\\\"\"";
-wayVncLauncherCommand = "swaymsg";
-wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c 'count=0; while [ $count -lt 20 ]; do rm -f {USock}; wayvnc -v -C /dev/null --unix-socket {USock} >>{RTSock}.log 2>&1; echo Restarting: wayvnc {RTSock}@{USock} attempt $((count+1))/20; rm {USock}; [ -S \"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\" ] && echo Sway still alive || break; count=$((count+1)); sleep 1; done'\"";
+        wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c 'count=0; while [ $count -lt 20 ]; do rm -f {USock}; wayvnc -v -C /dev/null --unix-socket {USock} >>{RTSock}.log 2>&1; echo Restarting: wayvnc {RTSock}@{USock} attempt $((count+1))/20; rm {USock}; [ -S \"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\" ] && echo Sway still alive || break; count=$((count+1)); sleep 1; done'\"";
         Console.WriteLine($"wayvnc: {wayVncLauncherCommand} {wayVncLauncherArgs}");
     }
     Console.WriteLine($"RECORD_SCREEN: {RECORD_SCREEN}");
@@ -716,11 +712,7 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
             Logger.Log($"Warning: Wayland server on port {RTSock} did not open");
         await Task.Delay(1000);
         wayVncLauncherCommand = "swaymsg";
-        wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"while :; rm -f {USock}; do wayvnc -v -C /dev/null --unix-socket {USock} >>{RTSock}.log 2>&1; echo Restarting: wayvnc {RTSock}@{USock}; rm {USock}; [ -S \\\\\\\"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\\\\\\\" ] && echo Sway still alive || break; sleep 1; done\\\"\"";
-	wayVncLauncherCommand = "swaymsg";
-wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c \\\"count=0; while [ $count -lt 20 ]; do rm -f {USock}; wayvnc -v -C /dev/null --unix-socket {USock} >>{RTSock}.log 2>&1; echo Restarting: wayvnc {RTSock}@{USock} attempt $((count+1))/20; rm {USock}; [ -S \\\\\\\"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\\\\\\\" ] && echo Sway still alive || break; count=$((count+1)); sleep 1; done\\\"\"";
-wayVncLauncherCommand = "swaymsg";
-wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c 'count=0; while [ $count -lt 20 ]; do rm -f {USock}; wayvnc -v -C /dev/null --unix-socket {USock} >>{RTSock}.log 2>&1; echo Restarting: wayvnc {RTSock}@{USock} attempt $((count+1))/20; rm {USock}; [ -S \"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\" ] && echo Sway still alive || break; count=$((count+1)); sleep 1; done'\"";
+        wayVncLauncherArgs = $"-s {RTSock} exec \"sh -c 'count=0; while [ $count -lt 20 ]; do rm -f {USock}; wayvnc -v -C /dev/null --unix-socket {USock} >>{RTSock}.log 2>&1; echo Restarting: wayvnc {RTSock}@{USock} attempt $((count+1))/20; rm {USock}; [ -S \"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY\" ] && echo Sway still alive || break; count=$((count+1)); sleep 1; done'\"";
         Console.WriteLine($"wayvnc: {wayVncLauncherCommand} {wayVncLauncherArgs}");
         Console.WriteLine($"RECORD_SCREEN: {RECORD_SCREEN}");
         Console.WriteLine("Started wayvnc");
