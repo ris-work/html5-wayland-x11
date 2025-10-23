@@ -1,79 +1,62 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
 
-    <!--
-    noVNC example: lightweight example using minimal UI and features
 
-    This is a self-contained file which doesn't import WebUtil or external CSS.
 
-    Copyright (C) 2019 The noVNC authors
-    noVNC is licensed under the MPL 2.0 (see LICENSE.txt)
-    This file is licensed under the 2-Clause BSD license (see LICENSE.txt).
-
-    Connect parameters are provided in query string:
-        http://example.com/?host=HOST&port=PORT&scale=true
-    -->
-    <title>noVNC</title>
-
-    <style>
-
-        body {
-            margin: 0;
-            background-color: dimgrey;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-        }
-        html {
-            height: 100%;
-        }
-
-        #top_bar {
-            background-color: #6e84a3;
-            color: white;
-            font: bold 12px Helvetica;
-            padding: 6px 5px 4px 5px;
-            border-bottom: 1px outset;
-        }
-        #status {
-            text-align: center;
-        }
-        #sendCtrlAltDelButton {
-            position: fixed;
-            top: 0px;
-            right: 0px;
-            border: 1px outset;
-            padding: 5px 5px 4px 5px;
-            cursor: pointer;
-        }
-
-        #screen {
-            flex: 1; /* fill remaining space */
-            overflow: hidden;
-        }
-
-    </style>
-
-    <script type="module" crossorigin="anonymous">
         // RFB holds the API to connect and communicate with a VNC server
         import RFB from './core/rfb.js';
 
         let rfb;
         let desktopName;
+	  const F23 = 0xFFD4;
+
+
+function attachKeepAlive(rfbInstance, intervalMs = 5000) {
+    let timerId;
+
+    function sendKeepAlive() {
+        try {
+	    rfb.sendKey(F23, true);   // press
+    rfb.sendKey(F23, false);  // release
+    console.info("[KeepAlive] Sent F23 press/release");
+        } catch (err) {
+            console.error("[KeepAlive] Error requesting update:", err);
+        }
+    }
+
+    function start() {
+        stop();
+        timerId = setInterval(sendKeepAlive, intervalMs);
+        console.log(`[KeepAlive] Started with interval ${intervalMs}ms`);
+    }
+
+    function stop() {
+        if (timerId) {
+            clearInterval(timerId);
+            timerId = null;
+            console.log("[KeepAlive] Stopped");
+        }
+    }
+
+    rfbInstance.addEventListener("disconnect", stop);
+    start();
+    return { stop };
+}
+
 
         // When this function is called we have
         // successfully connected to a server
         function connectedToServer(e) {
             status("Connected to " + desktopName);
+	    attachKeepAlive(rfb);
         }
 
         // This function is called when we are disconnected
         function disconnectedFromServer(e) {
             if (e.detail.clean) {
-                status("Disconnected");
+                status("Disconnected, retrying...");
+		initDC();
             } else {
-                status("Something went wrong, connection is closed");
+                status("Something went wrong, connection is closed, retrying...");
+		initDC();
             }
         }
 
@@ -151,9 +134,10 @@
             url += ':' + port;
         }
         url += '/' + path;
+	window.Link = function (){
 
         // Creating a new RFB object will start a new connection
-        rfb = new RFB(document.getElementById('screen'), url,
+        rfb = new RFB(document.getElementById('screen'), vncDC,
                       { credentials: { password: password } });
 
         // Add listeners to important events from the RFB module
@@ -165,16 +149,7 @@
         // Set parameters that can be changed on an active connection
         rfb.viewOnly = readQueryVariable('view_only', false);
         rfb.scaleViewport = readQueryVariable('scale', false);
-    </script>
-</head>
+	}
+	initDC();
+    
 
-<body>
-    <div id="top_bar">
-        <div id="status">Loading</div>
-        <div id="sendCtrlAltDelButton">Send CtrlAltDel</div>
-    </div>
-    <div id="screen">
-        <!-- This is where the remote screen will appear -->
-    </div>
-</body>
-</html>
