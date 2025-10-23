@@ -21,6 +21,7 @@ using Tomlyn.Model;
 using System.Security.Cryptography;
 using System.Data;
 using Microsoft.Extensions.Primitives;
+using Microsoft.AspNetCore.ResponseCompression;
 
 // ----------------------------------------------------------------
 // Top-level statements (all types come after)
@@ -35,7 +36,31 @@ List<ActiveSessions> sessions = new();
 Logger.Debug = true; // why: enable logging
 
 var builder = WebApplication.CreateBuilder(args);
+// 1. Add response compression services
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+
+    // Configure which MIME types to compress (includes common static file types)
+    options.MimeTypes = new[] {
+        "text/plain",
+        "text/html",
+        "application/javascript",
+        "text/css",
+        "application/json",
+        "image/svg+xml",
+        "text/xml",
+        "application/xml"
+    };
+
+    // Add compression providers
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+});
+
+
 var app = builder.Build();
+app.UseResponseCompression();
 
 var vncserver = "Xtigervnc";
 // Retrieve the DEFAULT_PROGRAM_NAME environment variable.
