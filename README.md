@@ -87,10 +87,10 @@ fw.exe
 ```
 Can use any combination of these:  
 ?WebRTC=true <== ENABLE WEBRTC, otherwise use WebSockets 
-?heavy=true <== Enable HEAVY mode. On WebRTC, this still reports as "disconnected" even if a connection is active.  
+?heavy=true <== Enable HEAVY mode. On WebRTC, this still reports as "disconnected" even if a connection is active. It has some nice features like allowing specifying "right click", launching keyboards, etc.  
 ?password=xxxxxxxx <== VNC password auth    
-?u=xxxx OR ?user=xxxx <= HTTP BASIC AUTH, alternative way to specify the credentials if not allowed to set the header or for simplicity  
-?p=xxxx OR ?pass=xxxx <= HTTP BASIC AUTH, alternative to password in header  
+?u=xxxx OR ?user=xxxx <== HTTP BASIC AUTH, alternative way to specify the credentials if not allowed to set the header or for simplicity  
+?p=xxxx OR ?pass=xxxx <== HTTP BASIC AUTH, alternative to password in header  
 ```
 ##### Sway 
 Ctrl+Drag to move windows 
