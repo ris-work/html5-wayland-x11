@@ -93,7 +93,7 @@ Can use any combination of these:
 ?p=xxxx OR ?pass=xxxx <== HTTP BASIC AUTH, alternative to password in header  
 ```
 ##### Sway 
-Ctrl+Drag to move windows 
+Ctrl+Drag to move windows  
 Usually does not render text (should not have any text rendering dependencies) 
 
 ##### WebRTC 
