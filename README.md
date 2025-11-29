@@ -18,6 +18,17 @@ To run your desktop apps through the browser. Securely, in a Kiosk mode. It is u
 This is a program that is terse and can be used to automatically setup and teardown and manage X11 and sway (Wayland) sessions through noVNC. This, in effect, allows you to run specific comamnds and display them in your browser. 
 In the `uds` branch, there is a config file for `ctwm` that disables all menus and gives typical Microsoft Windows (R)-like behaviour.   
 The -rtc branches add WebRTC and screen recording. 
+I needed a simpler, cross-platform, FOSS, lighter (i.e. no driver needed), also supporting headless (i.e. can create its own displays without physical displays) **AnyDesk** and **RustDesk** alternative. This software when properly configured can create new desktops and tear them down when the session expires, running processes like in a kiosk. If you don't want virtual desktop per session, use  as specified below (Microsoft Windows (R) EULA disallows you from creating more "remote" displays without special arrangements, so it was not even attempted). You need a VNC server in path, I recommend `tightvnc`: X11 sessions assume the presence of `tightvnc` and almost all X11 VNC servers are cousins of tightvnc. For Microsoft Windows (R), it is painless to use TightVNC official binaries - it only can "connect" to the displays, so make sure it is configured that way on Microsoft Windows (R).  
+
+## Things that might happen in the future
+ - Post-Quantum cryptography with pre-shared key with custom non-standard crypto (or wait it out until DTLS 1.3 PQ is there in `webrtc-rs`)  
+ - An OTP system that sends OTP by e.g. SMS or something  
+
+## Features that won't be supported  
+ - In-band file sharing: Most often proprietary, non-portable  
+ - Printer sharing: Most often proprietary, non-portable  
+ - Audio: Most often proprietary, non-portable, probably no JS client lib that can process it  
+ - Warning or permission prompts: This is too much work to be cross-platform, makes the size larger (need a UI now?)  
 
 #### Environment variables:   
 ```
@@ -129,14 +140,20 @@ The `trunk` branch has the code for pure TCP. Use it if you don't have the lates
 [unversioned binaries (uv)](https://vz.al/repos/fw/uv) 
 
 ###### Duplicator 
+You need these if you want to log the whole sessions.  
+These executables should be in PATH.  
 https://vz.al/repos/duplicator/home    
 [unversioned binaries (uv)](https://vz.al/repos/duplicator/uv) 
 
 ###### WebRTC Forwarding Utilities 
+These executables should be in PATH - these are important for establishing WebRTC Sessions. You don't need them if you won't use WebRTC. These are written in Rust and use `webrtc-rs`.  
+These executables use a random password to check whether the person is allowed to connect to the WebSocket, and the passwords are logged and not really treated as hashed ones because the only thing that is checked is that during the WebSocket session if these two secrets are the same. They can be anything.  
+Privacy policy for signalling server `vz.al/anonwsmul`: Nothing is logged except the request contents (with `tmux` default buffer size, yes, not logged "to file") and the default Apache2 reverse proxy logs; they are only for debugging and **NO TRACKING WHATSOEVER** happens. This is needed for WebRTC signalling. You can obtain the source here: [https://vz.al/repos/sample-wss/file?name=index.js&ci=tip]. Server: OSLv3, no later versions.  
 https://vz.al/repos/webrtc-udp-tcp-forwarder/home    
 [unversioned binaries (uv)](https://vz.al/repos/webrtc-udp-tcp-forwarder/uv) 
 
 ###### WebSocket (wscs) Forwarding Utilities 
+These executables should be in PATH. Won't be needed unless `$Env:WEBSOCKIFY="wscs"`. This is NativeAOT compiled async WebSocket <=> Unix Socket forwarder, supporting multiple connections per process.  
 https://vz.al/repos/wscs/home    
 [unversioned binaries (uv)](https://vz.al/repos/webrtc-udp-tcp-forwarder/uv) 
 
