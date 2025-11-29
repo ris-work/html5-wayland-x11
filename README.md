@@ -163,7 +163,7 @@ https://vz.al/repos/duplicator/home
 ###### WebRTC Forwarding Utilities  
 These executables should be in PATH - these are important for establishing WebRTC Sessions. You don't need them if you won't use WebRTC. These are written in Rust and use `webrtc-rs`.  
 These executables use a random password to check whether the person is allowed to connect to the WebSocket, and the passwords are logged and not really treated as hashed ones because the only thing that is checked is that during the WebSocket session if these two secrets are the same. They can be anything.  
-Privacy policy for signalling server `vz.al/anonwsmul`: Nothing is logged except the request contents (with `tmux` default buffer size, yes, not logged "to file") and the default Apache2 reverse proxy logs; they are only for debugging and **NO TRACKING WHATSOEVER** happens. This is needed for WebRTC signalling. You can obtain the source here: [https://vz.al/repos/sample-wss/file?name=index.js&ci=tip]. Server: OSLv3, no later versions.  
+Privacy policy for signalling server `vz.al/anonwsmul`: Nothing is logged except the request contents (with `tmux` default buffer size, yes, not logged "to file") and the default Apache2 reverse proxy logs; they are only for debugging and **NO TRACKING WHATSOEVER** happens. This is needed for WebRTC signalling. You can obtain the source here: [WebRTC Self-authenticated Multiuser Signalling Server Backend](https://vz.al/repos/sample-wss/file?name=index.js&ci=tip). Server: OSLv3, no later versions.  
 https://vz.al/repos/webrtc-udp-tcp-forwarder/home    
 [unversioned binaries (uv)](https://vz.al/repos/webrtc-udp-tcp-forwarder/uv) 
 
