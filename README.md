@@ -17,11 +17,14 @@ To run your desktop apps through the browser. Securely, in a Kiosk mode. It is u
 ## What is this?
 This is a program that is terse and can be used to automatically setup and teardown and manage X11 and sway (Wayland) sessions through noVNC. This, in effect, allows you to run specific comamnds and display them in your browser. 
 In the `uds` branch, there is a config file for `ctwm` that disables all menus and gives typical Microsoft Windows (R)-like behaviour.   
-The -rtc branches add WebRTC and screen recording. 
-I needed a simpler, cross-platform, FOSS, lighter (i.e. no driver needed), also supporting headless (i.e. can create its own displays without physical displays) **AnyDesk** and **RustDesk** alternative. This software when properly configured can create new desktops and tear them down when the session expires, running processes like in a kiosk. If you don't want virtual desktop per session, use  as specified below (Microsoft Windows (R) EULA disallows you from creating more "remote" displays without special arrangements, so it was not even attempted). You need a VNC server in path, I recommend `tightvnc`: X11 sessions assume the presence of `tightvnc` and almost all X11 VNC servers are cousins of tightvnc. For Microsoft Windows (R), it is painless to use TightVNC official binaries - it only can "connect" to the displays, so make sure it is configured that way on Microsoft Windows (R).  
+The -rtc branches add WebRTC and screen recording.  
+  
+I needed a simpler, cross-platform, FOSS, lighter (i.e. no driver needed), also supporting headless (i.e. can create its own displays without physical displays) **AnyDesk** and **RustDesk** alternative that can run "in the browser". This software when properly configured can create new desktops and tear them down when the session expires, running processes like in a kiosk. If you don't want virtual desktop per session, use  as specified below (Microsoft Windows (R) EULA disallows you from creating more "remote" displays without special arrangements, so it was not even attempted). You need a VNC server in path, I recommend `tightvnc`: X11 sessions assume the presence of `tightvnc` and almost all X11 VNC servers are cousins of tightvnc. For Microsoft Windows (R), it is painless to use TightVNC official binaries - it only can "connect" to the displays, won't set up one for you, so make sure it is configured that way on Microsoft Windows (R).  
+
+A browser is actualy not a requirement, but to use this without a browser you need some more programs and configuration juggling from the client side. Things are programmed in a way to not really *need* a browser. Works on Chrome, Edge and Firefox (tier 1) and Apple Mobile Safari (tier 3) - I am not sure about keyboard support in Apple platforms, a physical keyboard SHOULD work.  
 
 ## Things that might happen in the future
- - Post-Quantum cryptography with pre-shared key with custom non-standard crypto (or wait it out until DTLS 1.3 PQ is there in `webrtc-rs`)  
+ - Post-Quantum cryptography with pre-shared key with custom non-standard crypto (or wait it out until DTLS 1.3+ PQ is there in `webrtc-rs`, update and recompile)  
  - An OTP system that sends OTP by e.g. SMS or something  
 
 ## Features that won't be supported  
@@ -29,6 +32,10 @@ I needed a simpler, cross-platform, FOSS, lighter (i.e. no driver needed), also 
  - Printer sharing: Most often proprietary, non-portable  
  - Audio: Most often proprietary, non-portable, probably no JS client lib that can process it  
  - Warning or permission prompts: This is too much work to be cross-platform, makes the size larger (need a UI now?)  
+
+## Current production use  
+ - Used to manage server VMs  
+ - Used to access client computers remotely for maintenance  
 
 #### Environment variables:   
 ```
@@ -78,7 +85,12 @@ fw.exe
 
 ## Usage 
 ```
+Can use any combination of these:  
 ?WebRTC=true <== ENABLE WEBRTC, otherwise use WebSockets 
+?heavy=true <== Enable HEAVY mode. On WebRTC, this still reports as "disconnected" even if a connection is active.  
+?password=xxxxxxxx <== VNC password auth    
+?u=xxxx OR ?user=xxxx <= HTTP BASIC AUTH, alternative way to specify the credentials if not allowed to set the header or for simplicity  
+?p=xxxx OR ?pass=xxxx <= HTTP BASIC AUTH, alternative to password in header  
 ```
 ##### Sway 
 Ctrl+Drag to move windows 
@@ -93,7 +105,7 @@ You need to have the `duplicator` executable in PATH.
 
 ## Requiremets
 #### For all  
-`websockify` or `websockify-rs` or `wscs`   
+`websockify` or `websockify-rs` or `wscs` (don't forget to set the recommended environment variables)   
 `x11-apps` (for default apps)  
 `x11-utils` (for default apps)  
 
@@ -104,6 +116,9 @@ You need to have the `duplicator` executable in PATH.
 ##### Wayland
 `sway`  
 `wayvnc`  
+
+##### WebRTC, Session Logging (protocol dump)  
+See below for "tool requirements"  
 
 ### TLS/SSL
 Ideally usable from an Apache Web Server reverse HTTPS proxy.
@@ -128,35 +143,35 @@ Ideally usable from an Apache Web Server reverse HTTPS proxy.
  - glxgears  
  - Some of the ABA games   
 
-### Requirements
+### Tool requirements  
 Please use the latest `websockify` if you want to use Unix sockets to the maximum. They are more secure on the local machine. The `uds` branch contains the code. To use Wayland, use the `sway` branch. OpenGL works now, Vulkan doesn't (by default, use the .icd for LLVMPipe if you want software rendering - but then you have to recompile - avoided due to platform differences). 
 The `trunk` branch has the code for pure TCP. Use it if you don't have the latest `websockify`. Be mindful that anyone can connect from the local machine to any session if that's the case. 
 
-### Running
-`dotnet run` 
+### Running  
+`dotnet run`  
 
-#### Original Fossil Repo(s) 
+#### Original Fossil Repo(s)  
 [this](https://vz.al/repos/fw/home)   
-[unversioned binaries (uv)](https://vz.al/repos/fw/uv) 
+[unversioned binaries (uv)](https://vz.al/repos/fw/uv)  
 
-###### Duplicator 
+###### Duplicator  
 You need these if you want to log the whole sessions.  
 These executables should be in PATH.  
 https://vz.al/repos/duplicator/home    
 [unversioned binaries (uv)](https://vz.al/repos/duplicator/uv) 
 
-###### WebRTC Forwarding Utilities 
+###### WebRTC Forwarding Utilities  
 These executables should be in PATH - these are important for establishing WebRTC Sessions. You don't need them if you won't use WebRTC. These are written in Rust and use `webrtc-rs`.  
 These executables use a random password to check whether the person is allowed to connect to the WebSocket, and the passwords are logged and not really treated as hashed ones because the only thing that is checked is that during the WebSocket session if these two secrets are the same. They can be anything.  
 Privacy policy for signalling server `vz.al/anonwsmul`: Nothing is logged except the request contents (with `tmux` default buffer size, yes, not logged "to file") and the default Apache2 reverse proxy logs; they are only for debugging and **NO TRACKING WHATSOEVER** happens. This is needed for WebRTC signalling. You can obtain the source here: [https://vz.al/repos/sample-wss/file?name=index.js&ci=tip]. Server: OSLv3, no later versions.  
 https://vz.al/repos/webrtc-udp-tcp-forwarder/home    
 [unversioned binaries (uv)](https://vz.al/repos/webrtc-udp-tcp-forwarder/uv) 
 
-###### WebSocket (wscs) Forwarding Utilities 
+###### WebSocket (wscs) Forwarding Utilities  
 These executables should be in PATH. Won't be needed unless `$Env:WEBSOCKIFY="wscs"`. This is NativeAOT compiled async WebSocket <=> Unix Socket forwarder, supporting multiple connections per process.  
 https://vz.al/repos/wscs/home    
-[unversioned binaries (uv)](https://vz.al/repos/webrtc-udp-tcp-forwarder/uv) 
+[unversioned binaries (uv)](https://vz.al/repos/webrtc-udp-tcp-forwarder/uv)  
 
-### License
+### License  
 Copyright (C) 2025 Rishikeshan Sulochana/Lavakumar 
 License: Open Software License, Version 3.0 (no later versions)
