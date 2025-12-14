@@ -1,0 +1,322 @@
+Privative-Friendly Source-Shared License (PFSSL) v1.0
+
+Version 1, Revision 0, published on 25 April, 2025.
+
+Copyright (c) 2025 Rafael Senties Martinelli. All rights reserved.
+
+This license may be copied and shared freely, but its text must not be modified.
+See Clause 14 (Integrity of License Text) for more details.
+
+Introduction
+
+This license is designed to allow usage and integration with other software
+(including proprietary), while ensuring that the source code covered by this
+license is made available to users. It also emphasizes clear attribution and
+responsible reuse.
+
+Definitions
+
+- "Software" refers to the collection of files distributed under this license,
+  including source code, header files, scripts, configuration files,
+  documentation, artwork, and any other material included in the project.
+- "Source code" means the preferred form of the software for making
+  modifications, including build instructions, configuration files, and any
+  supporting materials required to compile, install, or run the software.
+- "Corresponding Source Code" for the Software means the Source Code of the
+  Software, including all scripts, configuration files, and other materials as
+  found in the Software's source distribution that are needed to compile,
+  install, and run the Software. It specifically excludes the source code of
+  libraries, tools, or other components that are external dependencies of the
+  Software and are typically obtained separately.
+- "You" refers to any individual or entity using, modifying, or distributing
+  the software under the terms of this license.
+
+How to Use the License
+
+To apply the Privative-Friendly Source-Shared License (PFSSL) v1.0 to a file or
+project, you should include the full license in your project, and a notice like
+the following at the top of each source file:
+
+    This file is part of [Project Name].
+
+ Copyright (c) [Year] [Your Name or Organization]
+
+ Licensed under the Privative-Friendly Source-Shared License (PFSSL) v1.0.
+ You may use, modify, and distribute this file under the terms of that license.
+
+ This software is provided "as is", without warranty of any kind.
+ The authors are not liable for any damages arising from its use.
+
+ See the LICENSE file located at [License location] of this project for details.
+
+
+Summary of Terms
+
+ 1. Disclaimer of Warranty
+ 2. Limitation of Liability
+ 3. License Grant
+ 4. Linking
+ 5. Use of Header Files
+ 6. Contributions
+ 7. Modification Notice Requirement
+ 8. Naming, Attribution, and Authorship
+ 9. Trademarks
+ 10. Source Code Availability
+ 11. Patent Grant and Termination
+ 12. Termination
+ 13. Severability
+ 14. Integrity of License Text
+
+1. Disclaimer of Warranty
+
+This software is provided "as is" and without warranty of any kind, express or
+implied, including but not limited to the warranties of merchantability, fitness
+for a particular purpose, and noninfringement.
+
+2. Limitation of Liability
+
+In no event shall the authors or copyright holders be liable for any claim,
+damages, or other liability, whether in an action of contract, tort, or
+otherwise, arising from, out of, or in connection with the software or the use
+or other dealings in the software.
+
+3. License Grant
+
+You are hereby granted, free of charge, a non-exclusive, worldwide,
+royalty-free license to use, copy, modify, distribute, and sublicense this
+software, subject to the following conditions.
+
+4. Linking
+
+You may compile, link, and use this software with any software (open-source or
+proprietary). If you distribute a binary or executable that links to this
+software, you are not required to release the source code of your own
+application.
+
+Note that while linking is generally permitted, the distribution of the
+Software, including when statically linked or used to provide network services,
+triggers source code disclosure obligations under Clause 10.
+
+5. Use of Header Files
+
+You are permitted to import and reference the header files provided by this
+software in proprietary or closed-source software, solely for the purpose of
+compiling and linking against this software. This includes the use of type
+declarations, function signatures, macros, and constants.
+
+However, this permission does not extend to the incorporation of code from
+header files that implements significant logic or core functionality of the
+Software. The inclusion of such code from header files into proprietary software
+is not permitted under this clause, as the primary purpose of this clause is to
+facilitate compilation and linking, not to allow the embedding of the
+Software's operational core into a work not covered by this license. Trivial
+inline definitions (such as simple data accessors or basic type manipulation)
+are permitted.
+
+This clause is intended to prevent circumvention of the source code availability
+obligations under Clause 10.
+
+6. Contributions
+
+By submitting a contribution to this software, you agree to license your
+contribution under the terms of the Privative-Friendly Source-Shared License
+(PFSSL) v1.0. You must have the legal right to submit the contribution and to
+license it under these terms.
+
+If your contribution incorporates code from other open-source projects, such
+incorporated code must be under terms compatible with this License. Terms are
+considered compatible if they do not impose obligations on the combined work
+that conflict with the terms of this License or are more restrictive than the
+obligations of this License, and if their requirements (such as attribution and
+license inclusion) can be fulfilled while complying with this License. When
+distributing the Software that includes such incorporated code, you must also
+include a copy of the original license(s) covering that code.
+
+7. Modification Notice Requirement
+
+If you modify this software in any way, you must include the year and the name
+of the author of the modifications within each modified file. For clarity,
+"name of the author" in this context includes their legal name, a commonly used
+pseudonym, or a username that they use consistently for contributions to the Software.
+
+8. Naming, Attribution, and Authorship
+
+If you distribute the Software:
+
+- Unmodified: You may retain the original name and identifiers.
+- Modified: You must take reasonable steps to effectively differentiate your
+  version from the original Software and to clearly indicate that it is a
+  modified version, thereby avoiding any suggestion that your version is the
+  original or endorsed by the original authors.
+
+Methods for achieving this differentiation include changing the name of the
+software and any public-facing identifiers (e.g., logos, binary names,
+documentation titles). If your modifications are minor (such as bug fixes or
+compatibility patches), providing a clear and prominent notice with the
+software stating that it is a modified derivative and not the original, or
+using versioning suffixes that indicate the modification, may be sufficient to
+satisfy this requirement. However, if your modifications are significant or
+could otherwise lead to confusion with the original Software, a change of the
+primary name and identifiers is required to avoid suggesting your version is the
+original, unless explicitly granted permission by the upstream authors.
+
+In all cases, you must preserve all existing copyright notices and author
+attributions. You may only add new authors to reflect your contributions.
+
+You may not use the name of the original authors or contributors to endorse or
+promote products derived from this software without prior written permission.
+
+Notwithstanding the above, the original authors retain the right to request that
+any distributor or user of a modified version cease using the original name and
+logo of the Software. Upon receiving such a request, the distributor or user
+must cease all use of the original name and logo within a reasonable timeframe.
+
+Suggestions for Attributions and Modification Tracking
+
+One suggested format for including detailed attribution and tracking
+contributions within individual source files is as follows:
+
+    This file is part of [Project Name].
+
+ Copyright (c)  [200X-20XX] [Creator Name or Organization]
+ Copyright (c)  [20YY-20YY] [Maintainer 1, Maintainer 2]
+
+ Licensed under the Privative-Friendly Source-Shared License (PFSSL) v1.0.
+ You may use, modify, and distribute this file under the terms of that license.
+
+ This software is provided "as is", without warranty of any kind.
+ The authors are not liable for any damages arising from its use.
+
+ See the LICENSE file located at [License location] of this project for details.
+
+ Contributions to this file by year:
+    20XY: Person 1, Person 7, Person 9
+    20XX: Person 1, Person 2, Person 3
+
+This format clearly distinguishes between the main authors or maintainers of the
+file and contributions made by others over time. By listing contributions
+concisely, typically by year and name, the format helps keep the file header
+manageable even in projects with a large number of contributors, without becoming
+overly verbose. When making modifications, you should update the relevant
+attribution information in the file header, such as copyright years or adding
+your name to the list of contributors for the current year, in accordance with
+Clause 6.
+
+9. Trademarks
+
+This License does not grant you any rights to use any trademarks, service marks,
+or logos associated with the Software. Any use of such marks must comply with
+applicable trademark law and be subject to separate permission from the owner of
+the marks.
+
+10. Source Code Availability
+
+The terms for making source code available depend on whether the Software has
+been modified. For the purposes of this clause, "Origin" refers to the primary
+source or location where the Software was obtained under this License (e.g., a
+specific URL, a package repository, or a defined distribution channel).
+
+If you Distribute the Software, or use the Software to provide services over a
+network (such as web applications, SaaS platforms, or APIs), you must adhere to
+the following conditions:
+
+Note on Package Manager Distribution: If the Software is distributed as a
+package manager dependency, and the metadata of that package clearly specifies
+the Origin from which the Corresponding Source Code can be obtained, this method
+of distribution is generally considered to fulfill the requirement of specifying
+the Origin under this section (a).
+
+a) If the Software has NOT been Modified:
+
+You are not required to provide the Corresponding Source Code with the
+distribution or network service. Instead, you must clearly specify the Origin
+from which the recipient or user can obtain the Corresponding Source Code of the
+unmodified Software.
+
+a.1) Fallback Source Availability:
+
+If the specified Origin for the unmodified Software subsequently becomes
+unavailable or no longer provides the Corresponding Source Code, and if the
+method by which the Origin was specified did not guarantee that recipients
+automatically received the Corresponding Source Code with their copy of the
+Software, then you must then make the full Corresponding Source Code of the
+unmodified Software available to recipients of any future distributions or users
+of any future network interactions of the work that includes the Software, and
+also to any party who previously received the work (or interacted with the
+service) and requests the source code after the original Origin is no longer
+available.
+
+b) If the Software has been Modified:
+
+You must make the full Corresponding Source Code of the Modified Software
+available to the recipient or users interacting with the service. The
+Corresponding Source Code must be complete and in a form that can be compiled
+and used to recreate and run the Modified Software, assuming a standard
+development environment with commonly available system libraries and external
+dependencies. The build instructions included in the Corresponding Source Code
+should clearly identify any necessary external dependencies and how they can be
+obtained, but the source code for these external dependencies does not need to
+be included. The method of making the Corresponding Source Code available should
+be reasonable and not impose undue burdens on the recipient (e.g., providing a
+download link or including it with the distribution).
+
+c) Failure to Comply with Source Availability:
+
+If you are required to provide the Corresponding Source Code under section a.1)
+(Fallback Source Availability for unmodified Software) or section b) (If the
+Software has been Modified), and you fail to provide that source code as
+required by the relevant section, you must cease all further distribution and
+use of the Software (as part of the larger work or service) until you are able
+to comply with that section's requirements.
+
+11. Patent Grant and Termination
+
+Subject to the terms and conditions of this license, the upstream authors hereby
+grant you a non-exclusive, worldwide, royalty-free patent license, to make,
+use, sell, offer for sale, import, and otherwise run, modify, and distribute
+this software, solely to the extent that such activity would otherwise infringe
+a patent owned or controlled by the upstream authors, that is necessarily
+infringed by the use or distribution of this software as permitted by this
+license.
+
+If you initiate patent litigation (including a cross-claim or counterclaim in a
+lawsuit) alleging that this software or a contribution incorporated within it
+infringes a patent, then your rights under this license shall terminate
+immediately.
+
+12. Termination
+
+Your rights under this License will terminate automatically if you fail to
+comply with any term of this License.
+
+If your breach of this License is curable, your rights will be reinstated if you
+cure the breach within 30 days of becoming aware of the breach.
+
+However, if your breach is a deliberate and significant violation of your
+obligations, your rights under this License will terminate immediately and
+permanently.
+
+Provisions which, by their nature, should survive termination of this License
+shall survive termination, including but not limited to Clauses 1 (Disclaimer
+of Warranty), 11 (Patent Grant and Termination - for past litigation), and this
+Clause 12.
+
+13. Severability
+
+If any provision of this License is held to be invalid, illegal, or
+unenforceable in any respect, that invalidity, illegality, or unenforceability
+shall not affect the validity, legality, or enforceability of the remaining
+provisions, and the license shall be construed as if the invalid, illegal, or
+unenforceable provision had never been contained herein.
+
+14. Integrity of License Text
+
+You may distribute this license along with the software, but you may not alter
+or remove the license text itself.
+
+Any copy of the software must be accompanied by the complete text of this
+license, included in a form that is readily accessible to the recipient and
+which preserves the original content and terms of the license without
+alteration. This permits including the license text within documentation files,
+software packages, or other standard distribution formats, provided the full
+text is present and its substance is not changed.

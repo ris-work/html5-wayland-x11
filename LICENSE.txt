@@ -1,0 +1,6 @@
+Copyright (c) 2024-2025 RISHIKESHAN SULOCHANA/LAVAKUMAR 🌱 <oss@rishikeshan.com>
+பதிப்புரிமை (c) 2024-2025 ரிஷிகேசன் சுலோச்சனா/லவக்குமார் 🌱 <oss@rishikeshan.com>
+
+
+[OSLv3](OSL3.0-comparison.pdf) (no later versions) OR (at your option) [PFSSL](PFSSL-1.0.txt) (no later versions). 
+
