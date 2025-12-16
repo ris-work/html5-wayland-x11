@@ -21,6 +21,7 @@ using System.Security.Cryptography;
 using System.Data;
 using Microsoft.Extensions.Primitives;
 using Microsoft.AspNetCore.ResponseCompression;
+using OtpNet;
 
 // ----------------------------------------------------------------
 // Top-level statements (all types come after)
@@ -175,6 +176,16 @@ if (BASE_PATH != "/")
         Console.Error.WriteLine("Error: BASE_PATH must not contain double consecutive slashes.");
         Environment.Exit(1);
     }
+}
+string TOTP_SECRET = Environment.GetEnvironmentVariable("TOTP_SECRET") ?? "";
+bool VERIFY_OTP = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("VERIFY_OTP"));
+Console.WriteLine($"verify_otp: {VERIFY_OTP}");
+(string currentOtp, bool isValid) GetOtpStatus(string userOtp) {
+    var totp = new Totp(Base32Encoding.ToBytes(TOTP_SECRET));
+    var currentOtp = totp.ComputeTotp();
+    var isValid = totp.VerifyTotp(userOtp, out _, new VerificationWindow(previous: 1, future: 1));
+    Console.WriteLine($"verify_otp: {VERIFY_OTP}, supplied_otp: {userOtp}, computed_otp: {currentOtp}");
+    return (currentOtp, isValid);
 }
 // Custom middleware to normalize multiple slashes to a single slash and log changes.
 app.Use(async (context, next) =>
@@ -924,6 +935,15 @@ app.MapGet("/", async Task<IResult> (HttpContext context) =>
     }
     string sessionCookieName = $"session_{targetApp}";
     string cookie = ALWAYS_NEW_SESSION ? Guid.NewGuid().ToString() : (context.Request.Cookies[sessionCookieName] ?? Guid.NewGuid().ToString());
+    string QTOTP = context.Request.Query["totp"];
+    Logger.Log($"QTOTP: {QTOTP}");
+    if(VERIFY_OTP){
+        (string expectedOtp, bool IS_TOTP_OK) = GetOtpStatus(QTOTP);
+	if(!IS_TOTP_OK) {
+		Console.WriteLine($"OTP failed for: {QTOTP}, expected {expectedOtp}");
+		return Results.Unauthorized();
+	}
+    }
     context.Response.Cookies.Append(sessionCookieName, cookie);
     ActiveSessions session;
     bool IS_AUTHORIZED = !USE_AUTHENTICATION || context.TryAuthenticate(AUTH_USERNAME, AUTH_PASSWORD);

@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -25,9 +25,10 @@
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0-preview.4.25258.110"/>
-    <PackageReference Include="Tomlyn" Version="0.19.0"/>
-    <PackageReference Include="Wiry.Base32.Patched" Version="1.0.6.1"/>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0-preview.4.25258.110" />
+    <PackageReference Include="Otp.NET" Version="1.4.1" />
+    <PackageReference Include="Tomlyn" Version="0.19.0" />
+    <PackageReference Include="Wiry.Base32.Patched" Version="1.0.6.1" />
   </ItemGroup>
   <PropertyGroup>
     <!-- Enable single file publishing and self-contained NativeAOT build -->
@@ -64,8 +65,7 @@
 
   </ItemGroup>
     <ItemGroup>
-  <EmbeddedResource Include="static\**\*"
-                   Exclude="static\node_modules\**;static\noVNC\**;static\browser\node_modules\**">
+  <EmbeddedResource Include="static\**\*" Exclude="static\node_modules\**;static\noVNC\**;static\browser\node_modules\**">
     <LogicalName>static/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
   </EmbeddedResource>
   </ItemGroup>
