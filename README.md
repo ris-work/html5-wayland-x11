@@ -66,6 +66,8 @@ export ANSWERER_TURN_SERVER=turn:xxxx.xxxx.com
 #export USE_AUTHENTICATION=true
 #export AUTH_USERNAME=xxxx
 #export AUTH_PASSWORD=xxxx
+#2FA/TOTP
+#export TOTP_SECRET="SECRET" (use with ?totp=xxxxxx in the URL)
 ```
 
 #### PowerShell Examples (Microsoft Windows (R))
@@ -91,6 +93,7 @@ Can use any combination of these:
 ?password=xxxxxxxx <== VNC password auth    
 ?u=xxxx OR ?user=xxxx <== HTTP BASIC AUTH, alternative way to specify the credentials if not allowed to set the header or for simplicity  
 ?p=xxxx OR ?pass=xxxx <== HTTP BASIC AUTH, alternative to password in header  
+?totp=xxxx <== TOTP  
 ```
 ##### Sway 
 Ctrl+Drag to move windows  
