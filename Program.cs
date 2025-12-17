@@ -28,6 +28,8 @@ using OtpNet;
 // Top-level statements (all types come after)
 // ----------------------------------------------------------------
 
+System.Threading.Lock SessionsDataLock = new();
+
 const int KILL_WAIT = 45;
 const string WEBRTC_PROCESS_NAME = "t-a-c";
 const int ATTEMPT_TIMES = 30;
@@ -184,7 +186,7 @@ Console.WriteLine($"verify_otp: {VERIFY_OTP}");
 (string currentOtp, bool isValid) GetOtpStatus(string userOtp) {
     var totp = new Totp(Base32Encoding.ToBytes(TOTP_SECRET));
     var currentOtp = totp.ComputeTotp();
-    var isValid = totp.VerifyTotp(userOtp, out _, new VerificationWindow(previous: 1, future: 1));
+    var isValid = totp.VerifyTotp(userOtp, out _, new VerificationWindow(previous: 2, future: 1));
     Console.WriteLine($"verify_otp: {VERIFY_OTP}, supplied_otp: {userOtp}, computed_otp: {currentOtp}");
     return (currentOtp, isValid);
 }
@@ -654,6 +656,7 @@ async Task<ActiveSessions> StartSession(string cookie, string procName)
 }
 void UpdateSession(string cookie)
 {
+    lock(SessionsDataLock){
     int idx = sessions.FindIndex(s => s.Cookie == cookie);
     if (idx != -1)
     {
@@ -661,6 +664,7 @@ void UpdateSession(string cookie)
         s.LastActive = DateTime.UtcNow;
         sessions[idx] = s;
         Logger.Log($"Session updated: cookie={cookie}, LastActive={s.LastActive:O}");
+    }
     }
 }
 async Task Pump(WebSocket src, WebSocket dst, string cookie)
@@ -682,6 +686,7 @@ _ = Task.Run(async () =>
     while (true)
     {
         await Task.Delay(5000);
+	lock(SessionsDataLock){
         sessions.RemoveAll(s =>
         {
             if (s.IsWebRTCSession)
@@ -712,12 +717,15 @@ _ = Task.Run(async () =>
             }
             return false;
         });
+	}
     }
 });
 
 
 app.MapGet("/WebRTCInfo", (string session) =>
 {
+    ActiveSessions s;
+    lock(SessionsDataLock){
     var idx = sessions.FindIndex(x => x.Cookie == session && x.IsWebRTCSession);
     if (idx < 0)
     {
@@ -725,20 +733,38 @@ app.MapGet("/WebRTCInfo", (string session) =>
         return Results.NotFound();
     }
     Logger.Log($"WebRTCInfo: FOUND: {session}");
-    var s = sessions[idx];
+    s = sessions[idx];
+    }
     return Results.Text(s.WebRTCConfigTheirs, "text/plain");
 });
+app.MapGet("SignOut", (HttpContext context) => {
+    lock(SessionsDataLock){
+    var potentialSessions = context.Request.Cookies;
+   string[] cookieNames = potentialSessions.Keys.ToArray();
+    for(int i = 0; i<cookieNames.Length; i++){
+    var idx = sessions.FindIndex(x => x.Cookie == potentialSessions[cookieNames[i]]);
+    if(idx >= 0){
+    sessions.RemoveAt(idx);
+    }
+    }
+    }
+    return true;
+    }
+);
+
 
 
 // GET "/" route: redirect user only to vnc_lite.html (WS endpoint is passed as querystring without leading slash)
 app.MapGet("/", async (HttpContext context) =>
 {
-    string targetApp = context.Request.Query["app"];
-    string QIsWebRTCSession = context.Request.Query["WebRTC"];
+    string targetApp = (string?)context.Request.Query["app"] ?? (string?)context.Request.Query["App"];
+    string QIsWebRTCSession = (string?)context.Request.Query["WebRTC"] ?? (string?)context.Request.Query["webrtc"];
     Logger.Log($"QIsWebRTCSession: {QIsWebRTCSession}");
     if (string.IsNullOrEmpty(QIsWebRTCSession))
         QIsWebRTCSession = "false";
-    string QIsHeavy = context.Request.Query["heavy"];
+    string QIsHeavy = (string?)context.Request.Query["heavy"] ?? (string?)context.Request.Query["HEAVY"]
+        ?? (string?)context.Request.Query["Heavy"];
+
     Logger.Log($"QIsHeavy: {QIsHeavy}");
     if (string.IsNullOrEmpty(QIsHeavy))
         QIsHeavy = "false";
@@ -753,7 +779,7 @@ app.MapGet("/", async (HttpContext context) =>
     }
     string sessionCookieName = $"session_{targetApp}";
     string cookie = context.Request.Cookies[sessionCookieName] ?? Guid.NewGuid().ToString();
-    string QTOTP = context.Request.Query["totp"];
+    string QTOTP = (string?)context.Request.Query["totp"] ?? (string?)context.Request.Query["TOTP"] ?? (string?)context.Request.Query["Totp"];
     Logger.Log($"QTOTP: {QTOTP}");
     if(VERIFY_OTP){
         (string expectedOtp, bool IS_TOTP_OK) = GetOtpStatus(QTOTP);
@@ -765,21 +791,29 @@ app.MapGet("/", async (HttpContext context) =>
     context.Response.Cookies.Append(sessionCookieName, cookie);
     ActiveSessions session;
     bool IS_AUTHORIZED = !USE_AUTHENTICATION || context.TryAuthenticate(AUTH_USERNAME, AUTH_PASSWORD);
-    if (!sessions.Any(s => s.Cookie == cookie))
+    bool SessionsAny = false;
+    lock(SessionsDataLock){
+       SessionsAny = sessions.Any(s => s.Cookie == cookie);
+    }
+    if (!SessionsAny)
     {
         if (IS_AUTHORIZED)
         {
             if (!IsWebRTCSession)
             {
                 session = await StartSession(cookie, targetApp);
+		lock(SessionsDataLock){
                 sessions.Add(session);
+		}
                 Logger.Log($"New session for cookie={cookie} app={targetApp}");
             }
             else
             {
                 session = await StartWebRTCSession(cookie, targetApp, cleanup);
                 Logger.Log("WebRTC Session Requested");
+		lock(SessionsDataLock){
                 sessions.Add(session);
+		}
             }
         }
         else
@@ -791,7 +825,9 @@ app.MapGet("/", async (HttpContext context) =>
     }
     else
     {
+	lock(SessionsDataLock){
         session = sessions.First(s => s.Cookie == cookie);
+	}
         Logger.Log($"Existing session for cookie={cookie} app={targetApp}");
     }
     await Task.Delay(1500);
@@ -830,15 +866,23 @@ RequestDelegate WsHandler = async (HttpContext context) =>
         Logger.Log($"{targetApp} ws rejected: auth failed");
         return;
     }
-    int idx = sessions.FindIndex(s => s.Cookie == cookie);
+    int idx;
+    lock(SessionsDataLock){
+    idx = sessions.FindIndex(s => s.Cookie == cookie);
+    }
     if (idx == -1)
     {
         var session = await StartSession(cookie, targetApp);
+	lock(SessionsDataLock){
         sessions.Add(session);
         idx = sessions.Count - 1;
+	}
         Logger.Log($"Session restarted for cookie={cookie} app={targetApp}");
     }
-    var userSession = sessions[idx];
+    ActiveSessions userSession;
+    lock(SessionsDataLock){
+    userSession = sessions[idx];
+    }
     WebSocket ws = null;
     try
     {
