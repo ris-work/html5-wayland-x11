@@ -14,18 +14,23 @@
     <!-- Single-file and trimming -->
     <PublishTrimmed>true</PublishTrimmed>
     <TrimmerDefaultAction>link</TrimmerDefaultAction>
+    <TrimmerRemoveSymbols>false</TrimmerRemoveSymbols>
     <!-- Size-first AOT settings -->
     <IlcOptimizationPreference>Size</IlcOptimizationPreference>
-    <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
+    <!--<IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>-->
+    <IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
+    <IlcGenerateStackTraceData>true</IlcGenerateStackTraceData>
     <!-- Strip out debug and runtime cruft -->
-    <DebugType>none</DebugType>
-    <DebugSymbols>false</DebugSymbols>
+    <DebugType>full</DebugType>
+    <DebugSymbols>true</DebugSymbols>
     <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
     <!-- Optional: force invariant globalization for smaller footprint -->
     <InvariantGlobalization>true</InvariantGlobalization>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0-preview.4.25258.110" />
+	  <!--<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0-preview.4.25258.110" />-->
     <PackageReference Include="Otp.NET" Version="1.4.1" />
     <PackageReference Include="Tomlyn" Version="0.19.0" />
     <PackageReference Include="Wiry.Base32.Patched" Version="1.0.6.1" />

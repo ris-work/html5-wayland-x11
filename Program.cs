@@ -19,6 +19,8 @@ using Tomlyn;
 using Tomlyn.Model;
 using System.Security.Cryptography;
 using System.Data;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Primitives;
 using Microsoft.AspNetCore.ResponseCompression;
 using OtpNet;
@@ -1160,6 +1162,46 @@ app.MapFallback(async context =>
     await context.Response.WriteAsync("Not Found");
 });
 
+app.MapGet("/TestSerialization", () =>
+{
+    Console.WriteLine("Starting serialization tests...");
+    var results = new Dictionary<string, object>();
+    // Primitive types
+    Console.WriteLine("Testing primitive types...");
+    results["bool"] = JsonSerializer.Serialize(true, FwJsonContext.Default.Boolean);
+    results["int"] = JsonSerializer.Serialize(42, FwJsonContext.Default.Int32);
+    results["string"] = JsonSerializer.Serialize("test", FwJsonContext.Default.String);
+    Console.WriteLine("Primitive types completed");
+    // Array types
+    Console.WriteLine("Testing array types...");
+    results["string[]"] = JsonSerializer.Serialize(new[] { "a", "b" }, FwJsonContext.Default.StringArray);
+    results["int[]"] = JsonSerializer.Serialize(new[] { 1, 2, 3 }, FwJsonContext.Default.Int32Array);
+    results["object[]"] = JsonSerializer.Serialize(new object[] { 1, "a", true }, FwJsonContext.Default.ObjectArray);
+    results["bool[]"] = JsonSerializer.Serialize(new[] { true, false }, FwJsonContext.Default.BooleanArray);
+    Console.WriteLine("Array types completed");
+    // Dictionary types
+    Console.WriteLine("Testing dictionary types...");
+    results["Dictionary<string, bool>"] = JsonSerializer.Serialize(
+        new Dictionary<string, bool> { ["a"] = true, ["b"] = false },
+        FwJsonContext.Default.DictionaryStringBoolean);
+    results["Dictionary<string, int>"] = JsonSerializer.Serialize(
+        new Dictionary<string, int> { ["x"] = 1, ["y"] = 2 },
+        FwJsonContext.Default.DictionaryStringInt32);
+    results["Dictionary<string, string>"] = JsonSerializer.Serialize(
+        new Dictionary<string, string> { ["key"] = "value" },
+        FwJsonContext.Default.DictionaryStringString);
+    Console.WriteLine("Dictionary types completed");
+    // ActiveSessions types
+    Console.WriteLine("Testing ActiveSessions types...");
+    var activeSession = new ActiveSessions();
+    results["ActiveSessions"] = JsonSerializer.Serialize(activeSession, FwJsonContext.Default.ActiveSessions);
+    results["List<ActiveSessions>"] = JsonSerializer.Serialize(new List<ActiveSessions> { activeSession }, FwJsonContext.Default.ListActiveSessions);
+    results["ActiveSessions[]"] = JsonSerializer.Serialize(new[] { activeSession }, FwJsonContext.Default.ActiveSessionsArray);
+    Console.WriteLine("ActiveSessions types completed");
+    Console.WriteLine("All serialization tests completed");
+    return Results.Ok(results);
+});
+
 app.UseRouting();
 app.Run();
 
@@ -1167,7 +1209,7 @@ app.Run();
 // Type declarations must come after top-level statements.
 // ----------------------------------------------------------------
 
-class ActiveSessions
+public class ActiveSessions
 {
     public string Cookie;
     public DateTime LastActive;
@@ -1186,7 +1228,7 @@ class ActiveSessions
 
 }
 
-static class Logger
+public static class Logger
 {
     public static bool Debug { get; set; }
     public static void Log(string msg)
@@ -1203,7 +1245,7 @@ public static class UnixWS
         string socketPath,
         string host,
         string resource,
-        string subProtocol = null,
+        string? subProtocol = null,
         CancellationToken cancellationToken = default)
     {
         Logger.Log($"Attempting to connect to Unix Domain Socket at '{socketPath}'");
@@ -1316,7 +1358,7 @@ public class ForwarderConfigOut
 
 
 
-static class HttpContextExtensions
+public static class HttpContextExtensions
 {
     public static bool TryAuthenticate(this HttpContext context, string expectedUser, string expectedPass)
     {
@@ -1404,3 +1446,39 @@ static class HttpContextExtensions
         return null;
     }
 }
+
+[JsonSourceGenerationOptions(
+    GenerationMode = JsonSourceGenerationMode.Default,
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    WriteIndented = true)]
+[JsonSerializable(typeof(bool))]
+[JsonSerializable(typeof(bool?))]
+[JsonSerializable(typeof(System.Boolean))]
+[JsonSerializable(typeof(int))]
+[JsonSerializable(typeof(string))]
+[JsonSerializable(typeof(object))]
+[JsonSerializable(typeof(ActiveSessions))]
+[JsonSerializable(typeof(List<ActiveSessions>))]
+[JsonSerializable(typeof(ActiveSessions[]))]
+[JsonSerializable(typeof(ActiveSessions?[]))]
+[JsonSerializable(typeof(string[]))]
+[JsonSerializable(typeof(int[]))]
+[JsonSerializable(typeof(object[]))]
+[JsonSerializable(typeof(object?[]))]
+[JsonSerializable(typeof(bool[]))]
+[JsonSerializable(typeof(bool?[]))]
+[JsonSerializable(typeof(System.Boolean[]))]
+// Dictionary types
+[JsonSerializable(typeof(Dictionary<string, bool>))]
+[JsonSerializable(typeof(Dictionary<string, int>))]
+[JsonSerializable(typeof(Dictionary<string, string>))]
+[JsonSerializable(typeof(Dictionary<string, object>))]
+// ActiveSessions types
+[JsonSerializable(typeof(ActiveSessions))]
+[JsonSerializable(typeof(List<ActiveSessions>))]
+[JsonSerializable(typeof(ActiveSessions[]))]
+// ASP.NET Core types (recommended)
+//[JsonSerializable(typeof(ProblemDetails))]
+//[JsonSerializable(typeof(ValidationProblemDetails))]
+// Add any other types you're serializing
+public partial class FwJsonContext : JsonSerializerContext { }
