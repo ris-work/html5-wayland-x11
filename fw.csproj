@@ -26,6 +26,8 @@
     <!-- Optional: force invariant globalization for smaller footprint -->
     <InvariantGlobalization>true</InvariantGlobalization>
     <DebuggerSupport>false</DebuggerSupport>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0-preview.4.25258.110" />
