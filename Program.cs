@@ -22,6 +22,7 @@ using System.Security.Cryptography;
 using System.Data;
 using Microsoft.Extensions.Primitives;
 using Microsoft.AspNetCore.ResponseCompression;
+using System.Security.Cryptography.X509Certificates;
 using OtpNet;
 
 // ----------------------------------------------------------------
@@ -62,8 +63,7 @@ builder.Services.AddResponseCompression(options =>
 });
 
 
-var app = builder.Build();
-app.UseResponseCompression();
+
 
 var vncserver = "Xtigervnc";
 // Retrieve the DEFAULT_PROGRAM_NAME environment variable.
@@ -135,6 +135,169 @@ if (NO_KIOSK)
     }
 }
 Console.WriteLine($"websockify: {WEBSOCKIFY}");
+
+string MTLS_RAW = Environment.GetEnvironmentVariable("MTLS");
+bool MTLS = false;
+if (MTLS_RAW?.ToLowerInvariant() == "true") MTLS = true;
+
+string MTLS_CERT_OURS = Environment.GetEnvironmentVariable("MTLS_CERT_OURS");
+string MTLS_CERT_THEIRS = Environment.GetEnvironmentVariable("MTLS_CERT_THEIRS");
+
+string MTLS_ALLOW_INT_RAW = Environment.GetEnvironmentVariable("MTLS_ALLOW_INTERMEDIATE_FINGERPRINTS");
+bool MTLS_ALLOW_INTERMEDIATE = false;
+if (MTLS_ALLOW_INT_RAW?.ToLowerInvariant() == "true") MTLS_ALLOW_INTERMEDIATE = true;
+
+HashSet<string> AllowedFingerprints = new HashSet<string>();
+if (!string.IsNullOrEmpty(MTLS_CERT_THEIRS))
+{
+    string[] fps = MTLS_CERT_THEIRS.Split(',', StringSplitOptions.RemoveEmptyEntries);
+    foreach (var fp in fps)
+    {
+        // Normalize: Uppercase, remove colons/dashes/spaces
+        string cleanFp = fp.ToUpperInvariant().Replace(":", "").Replace("-", "").Replace(" ", "").Trim();
+        if (!string.IsNullOrWhiteSpace(cleanFp))
+        {
+            AllowedFingerprints.Add(cleanFp);
+        }
+    }
+    Console.WriteLine($"[Startup] Parsed {AllowedFingerprints.Count} client fingerprints.");
+}
+
+
+// --- Static Helper for HTTP Certificate Fetching ---
+static System.Security.Cryptography.X509Certificates.X509Certificate2 GetCertByHttp(string url)
+{
+    Console.WriteLine($"[SSL] Fetching server certificate from URL: {url}");
+    try
+    {
+        var uri = new Uri(url);
+        using (var handler = new HttpClientHandler())
+        {
+            // Allow self-signed/untrusted origins for internal infra fetching
+            handler.ServerCertificateCustomValidationCallback = (msg, cert, chain, errs) => true;
+
+            using (var client = new HttpClient(handler))
+            {
+                // Handle Basic Auth if embedded in URL (https://user:pass@host/path)
+                if (!string.IsNullOrEmpty(uri.UserInfo))
+                {
+                    string basicAuth = Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes(uri.UserInfo));
+                    client.DefaultRequestHeaders.Add("Authorization", $"Basic {basicAuth}");
+                }
+
+                // Remove credentials from URL for the actual request path
+                var cleanUrl = uri.GetLeftPart(UriPartial.Path);
+
+                // Synchronous download (acceptable during startup)
+                byte[] pfxBytes = client.GetByteArrayAsync(cleanUrl).Result;
+
+                // Load cert (assumes PFX with no password, or password passed separately if needed)
+                return new System.Security.Cryptography.X509Certificates.X509Certificate2(pfxBytes, "",
+                    System.Security.Cryptography.X509Certificates.X509KeyStorageFlags.MachineKeySet |
+                    System.Security.Cryptography.X509Certificates.X509KeyStorageFlags.PersistKeySet);
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[CRITICAL] Failed to fetch certificate from HTTP: {ex.Message}");
+        throw;
+    }
+}
+
+// --- Main Configuration Logic ---
+if (MTLS)
+{
+    // 1. Load Server Certificate
+    System.Security.Cryptography.X509Certificates.X509Certificate2 serverCert = null;
+    try
+    {
+        if (MTLS_CERT_OURS.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            MTLS_CERT_OURS.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            serverCert = GetCertByHttp(MTLS_CERT_OURS);
+        }
+        else if (System.IO.File.Exists(MTLS_CERT_OURS))
+        {
+            serverCert = new System.Security.Cryptography.X509Certificates.X509Certificate2(MTLS_CERT_OURS, "",
+                System.Security.Cryptography.X509Certificates.X509KeyStorageFlags.MachineKeySet |
+                System.Security.Cryptography.X509Certificates.X509KeyStorageFlags.PersistKeySet);
+        }
+        else
+        {
+            Console.WriteLine($"[CRITICAL] MTLS_CERT_OURS path is invalid or file not found: {MTLS_CERT_OURS}");
+            Environment.Exit(1);
+        }
+        Console.WriteLine($"[SSL] Server certificate loaded. Thumbprint: {serverCert.Thumbprint}");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[CRITICAL] Failed to load server certificate: {ex.Message}");
+        Environment.Exit(1);
+    }
+
+    // 2. Configure Kestrel
+    builder.WebHost.ConfigureKestrel(options =>
+    {
+        // Configure defaults to apply mTLS to whatever endpoint ASPNETCORE_URLS defines
+        options.ConfigureEndpointDefaults(listenOptions =>
+        {
+            listenOptions.UseHttps(serverCert, httpsOptions =>
+            {
+                httpsOptions.ClientCertificateMode = Microsoft.AspNetCore.Server.Kestrel.Https.ClientCertificateMode.RequireCertificate;
+
+                // Fingerprint Validation Logic
+                httpsOptions.ClientCertificateValidation = (cert, chain, policy) =>
+                {
+                    if (cert == null) return false;
+
+                    // Helper to get clean SHA256 hash
+                    string GetCleanHash(System.Security.Cryptography.X509Certificates.X509Certificate2 c)
+                    {
+                        return c.GetCertHashString(System.Security.Cryptography.HashAlgorithmName.SHA256).ToUpperInvariant();
+                    }
+
+                    string leafHash = GetCleanHash(cert);
+
+                    // Check A: Leaf Certificate Match
+                    if (AllowedFingerprints.Contains(leafHash))
+                    {
+                        Console.WriteLine($"[Auth] SUCCESS: Client FP matched leaf: {leafHash.Substring(0, 8)}...");
+                        return true;
+                    }
+
+                    // Check B: Intermediate Chain Match (if enabled)
+                    if (MTLS_ALLOW_INTERMEDIATE && chain != null)
+                    {
+                        foreach (var element in chain.ChainElements)
+                        {
+                            string chainHash = GetCleanHash(element.Certificate);
+                            if (AllowedFingerprints.Contains(chainHash))
+                            {
+                                Console.WriteLine($"[Auth] SUCCESS: Client FP matched intermediate: {chainHash.Substring(0, 8)}...");
+                                return true;
+                            }
+                        }
+                    }
+
+                    // Failure
+                    Console.WriteLine($"[Auth] FAILED: Client FP {leafHash.Substring(0, 8)}... not in whitelist.");
+                    return false;
+                };
+            });
+        });
+    });
+}
+else
+{
+    Console.WriteLine("[Startup] MTLS Disabled. Using default configuration.");
+}
+
+var app = builder.Build();
+app.UseResponseCompression();
+
+
+
 // parse “host:port” or “[host]:port”
 (string host, int port) ParseEP(string s)
 {
@@ -940,6 +1103,44 @@ RequestDelegate WsHandler = async (HttpContext context) =>
         Logger.Log($"WS closed for cookie={cookie} in app={targetApp}");
     }
 };
+
+// --- Client Certificate Generator Endpoint ---
+app.MapGet("/GenCert", (HttpContext context) =>
+{
+    // 1. Generate a new RSA key pair for the client
+    using (var rsa = System.Security.Cryptography.RSA.Create(2048))
+    {
+        // 2. Create the certificate request
+        var req = new System.Security.Cryptography.X509Certificates.CertificateRequest(
+            "CN=TestClient",
+            rsa,
+            System.Security.Cryptography.HashAlgorithmName.SHA256,
+            System.Security.Cryptography.RSASignaturePadding.Pkcs1);
+
+        // 3. Add Client Authentication EKU (Essential for mTLS)
+        req.CertificateExtensions.Add(new System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension(
+            new System.Security.Cryptography.OidCollection {
+                new System.Security.Cryptography.Oid("1.3.6.1.5.5.7.3.2") // Client Authentication
+            }, false));
+
+        // 4. Create self-signed cert (valid for 1 year)
+        var cert = req.CreateSelfSigned(DateTimeOffset.Now.AddDays(-1), DateTimeOffset.Now.AddYears(1));
+
+        // 5. Export to PFX bytes (with private key)
+        // We set a password here (empty string for simplicity, or set a real one)
+        byte[] pfxBytes = cert.Export(System.Security.Cryptography.X509Certificates.X509ContentType.Pfx, "");
+
+        // 6. Calculate and Print the Fingerprint to the Console
+        string fingerprint = cert.GetCertHashString(System.Security.Cryptography.HashAlgorithmName.SHA256);
+        Console.WriteLine($"[GenCert] Generated Client Cert. SHA256 FP: {fingerprint}");
+        Console.WriteLine($"[GenCert] Add this FP to MTLS_CERT_THEIRS env var to authorize.");
+
+        // 7. Return the file
+        return Results.File(pfxBytes, "application/x-pkcs12", "client.pfx");
+    }
+});
+
+
 app.Map("/{targetApp}/ws", WsHandler);
 // Now, register the fallback so that requests not handled by earlier endpoints are processed here.
 app.MapFallback(async context =>
