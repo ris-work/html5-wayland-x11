@@ -141,6 +141,7 @@ bool MTLS = false;
 if (MTLS_RAW?.ToLowerInvariant() == "true") MTLS = true;
 
 string MTLS_CERT_OURS = Environment.GetEnvironmentVariable("MTLS_CERT_OURS");
+string MTLS_KEY_OURS = Environment.GetEnvironmentVariable("MTLS_KEY_OURS");
 string MTLS_CERT_THEIRS = Environment.GetEnvironmentVariable("MTLS_CERT_THEIRS");
 
 string MTLS_ALLOW_INT_RAW = Environment.GetEnvironmentVariable("MTLS_ALLOW_INTERMEDIATE_FINGERPRINTS");
@@ -163,78 +164,145 @@ if (!string.IsNullOrEmpty(MTLS_CERT_THEIRS))
     Console.WriteLine($"[Startup] Parsed {AllowedFingerprints.Count} client fingerprints.");
 }
 
+// We need these accessible to the background timer and the Kestrel callback
+System.Security.Cryptography.X509Certificates.X509Certificate2 _currentServerCert = null;
+DateTime _lastCertLoadTime = DateTime.MinValue;
+object _certLock = new object(); // Thread safety for swapping
 
 // --- Static Helper for HTTP Certificate Fetching ---
-static System.Security.Cryptography.X509Certificates.X509Certificate2 GetCertByHttp(string url)
+// We use this for both PFX bytes and PEM string content
+static string FetchHttpContentString(string url)
 {
-    Console.WriteLine($"[SSL] Fetching server certificate from URL: {url}");
+    Console.WriteLine($"[SSL] Fetching content from URL: {url}");
     try
     {
         var uri = new Uri(url);
         using (var handler = new HttpClientHandler())
         {
-            // Allow self-signed/untrusted origins for internal infra fetching
             handler.ServerCertificateCustomValidationCallback = (msg, cert, chain, errs) => true;
-
             using (var client = new HttpClient(handler))
             {
-                // Handle Basic Auth if embedded in URL (https://user:pass@host/path)
                 if (!string.IsNullOrEmpty(uri.UserInfo))
                 {
                     string basicAuth = Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes(uri.UserInfo));
                     client.DefaultRequestHeaders.Add("Authorization", $"Basic {basicAuth}");
                 }
 
-                // Remove credentials from URL for the actual request path
-                var cleanUrl = uri.GetLeftPart(UriPartial.Path);
-
-                // Synchronous download (acceptable during startup)
-                byte[] pfxBytes = client.GetByteArrayAsync(cleanUrl).Result;
-
-                // Load cert (assumes PFX with no password, or password passed separately if needed)
-                return new System.Security.Cryptography.X509Certificates.X509Certificate2(pfxBytes, "",
-                    System.Security.Cryptography.X509Certificates.X509KeyStorageFlags.MachineKeySet |
-                    System.Security.Cryptography.X509Certificates.X509KeyStorageFlags.PersistKeySet);
+                // Synchronous
+                return client.GetStringAsync(uri.GetLeftPart(UriPartial.Path)).Result;
             }
         }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[CRITICAL] Failed to fetch certificate from HTTP: {ex.Message}");
+        Console.WriteLine($"[CRITICAL] Failed to fetch from HTTP: {ex.Message}");
         throw;
+    }
+}
+
+static byte[] FetchHttpContentBytes(string url)
+{
+    // Reuse logic or implement byte fetch (for PFX)
+    Console.WriteLine($"[SSL] Fetching binary content from URL: {url}");
+    var uri = new Uri(url);
+    using (var handler = new HttpClientHandler())
+    {
+        handler.ServerCertificateCustomValidationCallback = (msg, cert, chain, errs) => true;
+        using (var client = new HttpClient(handler))
+        {
+            if (!string.IsNullOrEmpty(uri.UserInfo))
+            {
+                string basicAuth = Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes(uri.UserInfo));
+                client.DefaultRequestHeaders.Add("Authorization", $"Basic {basicAuth}");
+            }
+            return client.GetByteArrayAsync(uri.GetLeftPart(UriPartial.Path)).Result;
+        }
+    }
+}
+
+bool ReloadServerCert()
+{
+    try
+    {
+        System.Security.Cryptography.X509Certificates.X509Certificate2 newCert = null;
+
+        // CASE 1: PEM Mode (Cert + Key)
+        if (!string.IsNullOrEmpty(MTLS_KEY_OURS))
+        {
+            string certPem;
+            string keyPem;
+
+            if (MTLS_CERT_OURS.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                certPem = FetchHttpContentString(MTLS_CERT_OURS);
+            else
+                certPem = System.IO.File.ReadAllText(MTLS_CERT_OURS);
+
+            if (MTLS_KEY_OURS.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                keyPem = FetchHttpContentString(MTLS_KEY_OURS);
+            else
+                keyPem = System.IO.File.ReadAllText(MTLS_KEY_OURS);
+
+            using (var tempCert = System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPem(certPem, keyPem))
+            {
+                newCert = new System.Security.Cryptography.X509Certificates.X509Certificate2(tempCert.Export(System.Security.Cryptography.X509Certificates.X509ContentType.Pfx));
+            }
+        }
+        // CASE 2: PFX Mode
+        else
+        {
+            byte[] pfxBytes;
+            if (MTLS_CERT_OURS.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                pfxBytes = FetchHttpContentBytes(MTLS_CERT_OURS);
+            else
+                pfxBytes = System.IO.File.ReadAllBytes(MTLS_CERT_OURS);
+
+            newCert = new System.Security.Cryptography.X509Certificates.X509Certificate2(pfxBytes, "",
+                System.Security.Cryptography.X509Certificates.X509KeyStorageFlags.MachineKeySet |
+                System.Security.Cryptography.X509Certificates.X509KeyStorageFlags.PersistKeySet);
+        }
+
+        // Check if cert is actually different (optional optimization)
+        // For simplicity, we swap it if loaded successfully.
+
+        lock (_certLock)
+        {
+            var oldCert = _currentServerCert;
+            _currentServerCert = newCert;
+            oldCert?.Dispose(); // Clean up old cert
+            _lastCertLoadTime = DateTime.UtcNow;
+        }
+
+        Console.WriteLine($"[SSL] Server certificate reloaded. Thumbprint: {newCert.Thumbprint}");
+        return true;
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[SSL] ERROR reloading certificate: {ex.Message}");
+        return false;
     }
 }
 
 // --- Main Configuration Logic ---
 if (MTLS)
 {
-    // 1. Load Server Certificate
-    System.Security.Cryptography.X509Certificates.X509Certificate2 serverCert = null;
-    try
+    // 1. Initial Load (Blocking startup if it fails)
+    Console.WriteLine("[Startup] Performing initial certificate load...");
+    if (!ReloadServerCert())
     {
-        if (MTLS_CERT_OURS.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-            MTLS_CERT_OURS.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-        {
-            serverCert = GetCertByHttp(MTLS_CERT_OURS);
-        }
-        else if (System.IO.File.Exists(MTLS_CERT_OURS))
-        {
-            serverCert = new System.Security.Cryptography.X509Certificates.X509Certificate2(MTLS_CERT_OURS, "",
-                System.Security.Cryptography.X509Certificates.X509KeyStorageFlags.MachineKeySet |
-                System.Security.Cryptography.X509Certificates.X509KeyStorageFlags.PersistKeySet);
-        }
-        else
-        {
-            Console.WriteLine($"[CRITICAL] MTLS_CERT_OURS path is invalid or file not found: {MTLS_CERT_OURS}");
-            Environment.Exit(1);
-        }
-        Console.WriteLine($"[SSL] Server certificate loaded. Thumbprint: {serverCert.Thumbprint}");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"[CRITICAL] Failed to load server certificate: {ex.Message}");
+        Console.WriteLine("[CRITICAL] Initial certificate load failed. Exiting.");
         Environment.Exit(1);
     }
+
+    // 2. Setup Background Timer (Reload every 1 hour)
+    // Timer callback runs in ThreadPool
+    var _reloadTimer = new System.Threading.Timer((state) =>
+    {
+        // Optional: Check time to avoid redundant reloads if logic expands
+        // if ((DateTime.UtcNow - _lastCertLoadTime).TotalMinutes < 60) return;
+
+        Console.WriteLine("[SSL] Background check: Attempting certificate reload...");
+        ReloadServerCert();
+    }, null, TimeSpan.FromMinutes(60), TimeSpan.FromMinutes(60)); // DueTime, Period
 
     // 2. Configure Kestrel
     builder.WebHost.ConfigureKestrel(options =>
@@ -242,8 +310,14 @@ if (MTLS)
         // Configure defaults to apply mTLS to whatever endpoint ASPNETCORE_URLS defines
         options.ConfigureEndpointDefaults(listenOptions =>
         {
-            listenOptions.UseHttps(serverCert, httpsOptions =>
+            listenOptions.UseHttps(httpsOptions =>
             {
+                // USE SELECTOR: Allows dynamic swapping of the cert
+                httpsOptions.ServerCertificateSelector = (context, name) =>
+                {
+                    // Return the thread-safe current reference
+                    return _currentServerCert;
+                };
                 httpsOptions.ClientCertificateMode = Microsoft.AspNetCore.Server.Kestrel.Https.ClientCertificateMode.RequireCertificate;
 
                 // Fingerprint Validation Logic
@@ -357,7 +431,13 @@ Console.WriteLine($"verify_otp: {VERIFY_OTP}");
 Console.WriteLine($"BASE_PATH: {BASE_PATH}");
 app.UsePathBase(BASE_PATH);
 File.WriteAllText("empty_x_startup", "#!/bin/sh\nexec tail -f /dev/null");
-File.SetUnixFileMode("empty_x_startup", File.GetUnixFileMode("empty_x_startup") | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
+try
+{
+    File.SetUnixFileMode("empty_x_startup", File.GetUnixFileMode("empty_x_startup") | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
+}catch (Exception E)
+{
+    Console.WriteLine($"{E}");
+}
 
 static void ExtractAllStaticResources(string destFolder)
 {
