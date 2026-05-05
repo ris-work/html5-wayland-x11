@@ -70,10 +70,11 @@ export ANSWERER_TURN_SERVER=turn:xxxx.xxxx.com
 #export VERIFY_OTP=true
 #export TOTP_SECRET="SECRET" (use with ?totp=xxxxxx in the URL)
 #export MTLS=false #MTLS: Exclusive TLS mode.
-#export MTLS_CERT_OURS=/path/to/cert.pfx #MTLS_CERT_OURS/KEY_OURS: PFX path/URL, or PEM pair, no key means pfx mode.
-#export MTLS_KEY_OURS=/path/to/privkey.pem
+#export MTLS_CERT_OURS=/path/to/cert.pfx #MTLS_CERT_OURS/KEY_OURS: PFX path/URL, or PEM pair, no key means pfx mode. Refreshed every 1h.  Supports: https://[user:pass@...]/..., file:///
+#export MTLS_KEY_OURS=/path/to/privkey.pem #Supports: https://[user:pass@...]/..., file:///. Refreshed every 1h. 
 #export MTLS_CERT_THEIRS=XX:XX:XX #MTLS_CERT_THEIRS: Comma-separated allowed client SHA256 fingerprints.
 #export MTLS_ALLOW_INTERMEDIATE_FINGERPRINTS=false #MTLS_ALLOW_INTERMEDIATE: Check chain intermediates.
+#export MTLS_CERT_THEIRS_URL="process://" #Dynamic keylist, format: aa:bb:cc keyname <newline> cc:dd:ee <keyname> <newline>. Refreshed every 1h. Supports: https://[user:pass@...]/..., file:///
 ```
 
 #### PowerShell Examples (Microsoft Windows (R))
@@ -89,10 +90,11 @@ $Env:ANSWERER_TURN_SERVER="turn:turn.server.example.com:example_port"
 $Env:OFFERER_TURN_SERVER="stun:stun.server.example.com:example_port"
 $Env:BASE_PATH="/reverse_proxy_subdirectory/"
 $Env:MTLS = "false" #MTLS: Exclusive TLS mode.
-$Env:MTLS_CERT_OURS = "C:\path\to\cert.pfx" #MTLS_CERT_OURS/KEY_OURS: PFX path/URL, or PEM pair, no key means pfx mode.
-$Env:MTLS_KEY_OURS = "C:\path\to\privkey.pem"
+$Env:MTLS_CERT_OURS = "C:\path\to\cert.pfx" #MTLS_CERT_OURS/KEY_OURS: PFX path/URL, or PEM pair, no key means pfx mode. Pfx mode does not support process://. Refreshed every 1h. Supports: https://[user:pass@...]/..., file:///
+$Env:MTLS_KEY_OURS = "C:\path\to\privkey.pem" #This mode supports process:// URLs too. Supports: https://[user:pass@...]/..., file:///. Refreshed every 1h. 
 $Env:MTLS_CERT_THEIRS = "XX:XX:XX" #MTLS_CERT_THEIRS: Comma-separated allowed client SHA256 fingerprints.
 $Env:MTLS_ALLOW_INTERMEDIATE_FINGERPRINTS = "false" #MTLS_ALLOW_INTERMEDIATE: Check chain intermediates.
+$Env:MTLS_CERT_THEIRS_URL="process://" #Dynamic keylist, format: aa:bb:cc keyname <newline> cc:dd:ee <keyname> <newline>. Refreshed every 1h. Supports: https://[user:pass@...]/..., file:///
 fw.exe
 ```
 
