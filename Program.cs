@@ -147,22 +147,139 @@ string MTLS_CERT_THEIRS = Environment.GetEnvironmentVariable("MTLS_CERT_THEIRS")
 string MTLS_ALLOW_INT_RAW = Environment.GetEnvironmentVariable("MTLS_ALLOW_INTERMEDIATE_FINGERPRINTS");
 bool MTLS_ALLOW_INTERMEDIATE = false;
 if (MTLS_ALLOW_INT_RAW?.ToLowerInvariant() == "true") MTLS_ALLOW_INTERMEDIATE = true;
+string MTLS_CERT_THEIRS_URL = Environment.GetEnvironmentVariable("MTLS_CERT_THEIRS_URL");
 
+// Static set from Env Var (never changes)
+HashSet<string> StaticFingerprints = new HashSet<string>();
+// Runtime set (Static + Dynamic merged)
 HashSet<string> AllowedFingerprints = new HashSet<string>();
-if (!string.IsNullOrEmpty(MTLS_CERT_THEIRS))
+object _fpLock = new object();
+
+
+static string NormalizeFingerprint(string raw, string source = "unknown")
 {
-    string[] fps = MTLS_CERT_THEIRS.Split(',', StringSplitOptions.RemoveEmptyEntries);
-    foreach (var fp in fps)
+    if (string.IsNullOrWhiteSpace(raw)) return null;
+
+    // 1. Uppercase and remove separators (:, -, space)
+    string clean = raw.ToUpperInvariant().Replace(":", "").Replace("-", "").Replace(" ", "").Trim();
+
+    // 2. Validate Length (SHA256 = 64 hex chars)
+    if (clean.Length != 64)
     {
-        // Normalize: Uppercase, remove colons/dashes/spaces
-        string cleanFp = fp.ToUpperInvariant().Replace(":", "").Replace("-", "").Replace(" ", "").Trim();
-        if (!string.IsNullOrWhiteSpace(cleanFp))
+        Console.WriteLine($"[Auth] WARNING: Invalid length ({clean.Length} chars, expected 64) in {source}: {raw.Trim()}");
+        return null;
+    }
+
+    // 3. Validate Hex
+    foreach (char c in clean)
+    {
+        if (!Uri.IsHexDigit(c))
         {
-            AllowedFingerprints.Add(cleanFp);
+            Console.WriteLine($"[Auth] WARNING: Invalid hex character in {source}: {raw.Trim()}");
+            return null;
         }
     }
-    Console.WriteLine($"[Startup] Parsed {AllowedFingerprints.Count} client fingerprints.");
+
+    return clean;
 }
+
+// --- Helper: Parse List (Handles "FP NOTE" and "FP,FP") ---
+static HashSet<string> ParseFingerprintList(string content, string source)
+{
+    var set = new HashSet<string>();
+    if (string.IsNullOrWhiteSpace(content)) return set;
+
+    var lines = content.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+    foreach (var line in lines)
+    {
+        string trimmed = line.Trim();
+        if (string.IsNullOrEmpty(trimmed)) continue;
+
+        // Split by comma if present (old format support)
+        if (trimmed.Contains(","))
+        {
+            foreach (var part in trimmed.Split(','))
+            {
+                var fp = NormalizeFingerprint(part, source);
+                if (fp != null) set.Add(fp);
+            }
+        }
+        else
+        {
+            // New Line Format: "FP NOTE"
+            int spaceIdx = trimmed.IndexOfAny(new[] { ' ', '\t' });
+            string fpPart = (spaceIdx > 0) ? trimmed.Substring(0, spaceIdx) : trimmed;
+
+            var fp = NormalizeFingerprint(fpPart, source);
+            if (fp != null) set.Add(fp);
+        }
+    }
+    return set;
+}
+
+// --- Prepare Allowed Fingerprints (Static) ---
+if (!string.IsNullOrEmpty(MTLS_CERT_THEIRS))
+{
+    StaticFingerprints = ParseFingerprintList(MTLS_CERT_THEIRS, "ENV_VAR");
+    // Initially, Allowed = Static
+    AllowedFingerprints = new HashSet<string>(StaticFingerprints);
+    Console.WriteLine($"[Startup] Loaded {AllowedFingerprints.Count} static fingerprints from Env.");
+}
+
+// --- Dynamic Fingerprint Refresh Setup ---
+if (!string.IsNullOrEmpty(MTLS_CERT_THEIRS_URL))
+{
+    Console.WriteLine($"[Startup] Dynamic Fingerprint URL configured: {MTLS_CERT_THEIRS_URL}");
+
+    // Logic to rebuild list: Static + Dynamic
+    void RefreshFingerprints(object state)
+    {
+        try
+        {
+            string url = (string)state;
+            string content = FetchContentString(url); // Reuse existing fetcher
+
+            // Parse Dynamic List
+            var dynamicFps = ParseFingerprintList(content, "URL");
+
+            // Rebuild: Static + Dynamic
+            var newSet = new HashSet<string>(StaticFingerprints);
+            Console.WriteLine($"[Auth] Refreshing fingerprints... Static: {StaticFingerprints.Count}, Fetched: {dynamicFps.Count}");
+
+            foreach (var fp in dynamicFps)
+            {
+                if (!newSet.Contains(fp))
+                {
+                    Console.WriteLine($"[Auth] + Adding dynamic FP: {fp.Substring(0, 8)}...");
+                }
+                newSet.Add(fp);
+            }
+
+            // Atomic Swap
+            lock (_fpLock)
+            {
+                AllowedFingerprints = newSet;
+            }
+
+            Console.WriteLine($"[Auth] Fingerprint refresh complete. Total allowed: {AllowedFingerprints.Count}");
+            // Optional: Print all keys if needed (can be noisy)
+            // foreach(var fp in AllowedFingerprints) Console.WriteLine($"   - {fp}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Auth] ERROR during fingerprint refresh: {ex.Message}");
+        }
+    }
+
+    // Run immediately
+    RefreshFingerprints(MTLS_CERT_THEIRS_URL);
+
+    // Setup Timer (Every 60 mins)
+    var _fpTimer = new System.Threading.Timer(RefreshFingerprints, MTLS_CERT_THEIRS_URL,
+        TimeSpan.FromMinutes(60), TimeSpan.FromMinutes(60));
+}
+
 
 // We need these accessible to the background timer and the Kestrel callback
 System.Security.Cryptography.X509Certificates.X509Certificate2 _currentServerCert = null;
@@ -200,6 +317,94 @@ static string FetchHttpContentString(string url)
     }
 }
 
+// --- Helper: Fetch Content (String) from HTTP, File, or Process ---
+static string FetchContentString(string source)
+{
+    try
+    {
+        // 1. Handle HTTP/HTTPS
+        if (source.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            source.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            var uri = new Uri(source);
+            using (var handler = new HttpClientHandler())
+            {
+                // Allow self-signed origins for internal fetching
+                handler.ServerCertificateCustomValidationCallback = (msg, cert, chain, errs) => true;
+                using (var client = new HttpClient(handler))
+                {
+                    // Handle Basic Auth if embedded in URL
+                    if (!string.IsNullOrEmpty(uri.UserInfo))
+                    {
+                        string basicAuth = Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes(uri.UserInfo));
+                        client.DefaultRequestHeaders.Add("Authorization", $"Basic {basicAuth}");
+                    }
+                    // Sync download
+                    return client.GetStringAsync(uri.GetLeftPart(UriPartial.Path)).Result;
+                }
+            }
+        }
+
+        // 2. Handle Local File (file://)
+        if (source.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+        {
+            var uri = new Uri(source);
+            string path = uri.LocalPath;
+            Console.WriteLine($"[Auth] Reading local file: {path}");
+            return System.IO.File.ReadAllText(path);
+        }
+
+        // 3. Handle Process Execution (process://)
+        if (source.StartsWith("process://", StringComparison.OrdinalIgnoreCase))
+        {
+            // Format: process:///path/to/executable
+            var uri = new Uri(source);
+            string path = uri.LocalPath;
+
+            Console.WriteLine($"[Auth] Executing process: {path}");
+
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = path,
+                // Pass query string as arguments? e.g. ?key=1 -> "key=1"
+                Arguments = string.IsNullOrEmpty(uri.Query) ? "" : uri.Query.TrimStart('?'),
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using (var proc = System.Diagnostics.Process.Start(psi))
+            {
+                string stdout = proc.StandardOutput.ReadToEnd();
+                string stderr = proc.StandardError.ReadToEnd();
+
+                // Wait with timeout (10 seconds)
+                if (!proc.WaitForExit(10000))
+                {
+                    proc.Kill();
+                    throw new TimeoutException($"Process '{path}' timed out after 10 seconds.");
+                }
+
+                if (proc.ExitCode != 0)
+                {
+                    throw new Exception($"Process '{path}' failed with code {proc.ExitCode}. Error: {stderr}");
+                }
+
+                return stdout;
+            }
+        }
+
+        // 4. Fallback (Try as raw file path)
+        Console.WriteLine($"[Auth] Warning: Unknown scheme in '{source}'. Attempting to read as file.");
+        return System.IO.File.ReadAllText(source);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[CRITICAL] Failed to fetch content from '{source}': {ex.Message}");
+        throw;
+    }
+}
 static byte[] FetchHttpContentBytes(string url)
 {
     // Reuse logic or implement byte fetch (for PFX)
@@ -232,15 +437,9 @@ bool ReloadServerCert()
             string certPem;
             string keyPem;
 
-            if (MTLS_CERT_OURS.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                certPem = FetchHttpContentString(MTLS_CERT_OURS);
-            else
-                certPem = System.IO.File.ReadAllText(MTLS_CERT_OURS);
-
-            if (MTLS_KEY_OURS.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                keyPem = FetchHttpContentString(MTLS_KEY_OURS);
-            else
-                keyPem = System.IO.File.ReadAllText(MTLS_KEY_OURS);
+            certPem = FetchContentString(MTLS_CERT_OURS);
+            keyPem = FetchContentString(MTLS_KEY_OURS);
+            
 
             using (var tempCert = System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPem(certPem, keyPem))
             {
@@ -332,9 +531,10 @@ if (MTLS)
                     }
 
                     string leafHash = GetCleanHash(cert);
+                    var currentAllowed = AllowedFingerprints;
 
                     // Check A: Leaf Certificate Match
-                    if (AllowedFingerprints.Contains(leafHash))
+                    if (currentAllowed.Contains(leafHash))
                     {
                         Console.WriteLine($"[Auth] SUCCESS: Client FP matched leaf: {leafHash.Substring(0, 8)}...");
                         return true;
@@ -346,7 +546,7 @@ if (MTLS)
                         foreach (var element in chain.ChainElements)
                         {
                             string chainHash = GetCleanHash(element.Certificate);
-                            if (AllowedFingerprints.Contains(chainHash))
+                            if (currentAllowed.Contains(chainHash))
                             {
                                 Console.WriteLine($"[Auth] SUCCESS: Client FP matched intermediate: {chainHash.Substring(0, 8)}...");
                                 return true;
