@@ -147,21 +147,136 @@ string MTLS_CERT_THEIRS = Environment.GetEnvironmentVariable("MTLS_CERT_THEIRS")
 string MTLS_ALLOW_INT_RAW = Environment.GetEnvironmentVariable("MTLS_ALLOW_INTERMEDIATE_FINGERPRINTS");
 bool MTLS_ALLOW_INTERMEDIATE = false;
 if (MTLS_ALLOW_INT_RAW?.ToLowerInvariant() == "true") MTLS_ALLOW_INTERMEDIATE = true;
+string MTLS_CERT_THEIRS_URL = Environment.GetEnvironmentVariable("MTLS_CERT_THEIRS_URL");
 
+// Static set from Env Var (never changes)
+HashSet<string> StaticFingerprints = new HashSet<string>();
+// Runtime set (Static + Dynamic merged)
 HashSet<string> AllowedFingerprints = new HashSet<string>();
-if (!string.IsNullOrEmpty(MTLS_CERT_THEIRS))
+object _fpLock = new object();
+
+static string NormalizeFingerprint(string raw, string source = "unknown")
 {
-    string[] fps = MTLS_CERT_THEIRS.Split(',', StringSplitOptions.RemoveEmptyEntries);
-    foreach (var fp in fps)
+    if (string.IsNullOrWhiteSpace(raw)) return null;
+
+    // 1. Uppercase and remove separators (:, -, space)
+    string clean = raw.ToUpperInvariant().Replace(":", "").Replace("-", "").Replace(" ", "").Trim();
+
+    // 2. Validate Length (SHA256 = 64 hex chars)
+    if (clean.Length != 64)
     {
-        // Normalize: Uppercase, remove colons/dashes/spaces
-        string cleanFp = fp.ToUpperInvariant().Replace(":", "").Replace("-", "").Replace(" ", "").Trim();
-        if (!string.IsNullOrWhiteSpace(cleanFp))
+        Console.WriteLine($"[Auth] WARNING: Invalid length ({clean.Length} chars, expected 64) in {source}: {raw.Trim()}");
+        return null;
+    }
+
+    // 3. Validate Hex
+    foreach (char c in clean)
+    {
+        if (!Uri.IsHexDigit(c))
         {
-            AllowedFingerprints.Add(cleanFp);
+            Console.WriteLine($"[Auth] WARNING: Invalid hex character in {source}: {raw.Trim()}");
+            return null;
         }
     }
-    Console.WriteLine($"[Startup] Parsed {AllowedFingerprints.Count} client fingerprints.");
+
+    return clean;
+}
+
+// --- Helper: Parse List (Handles "FP NOTE" and "FP,FP") ---
+static HashSet<string> ParseFingerprintList(string content, string source)
+{
+    var set = new HashSet<string>();
+    if (string.IsNullOrWhiteSpace(content)) return set;
+
+    var lines = content.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+    foreach (var line in lines)
+    {
+        string trimmed = line.Trim();
+        if (string.IsNullOrEmpty(trimmed)) continue;
+
+        // Split by comma if present (old format support)
+        if (trimmed.Contains(","))
+        {
+            foreach (var part in trimmed.Split(','))
+            {
+                var fp = NormalizeFingerprint(part, source);
+                if (fp != null) set.Add(fp);
+            }
+        }
+        else
+        {
+            // New Line Format: "FP NOTE"
+            int spaceIdx = trimmed.IndexOfAny(new[] { ' ', '\t' });
+            string fpPart = (spaceIdx > 0) ? trimmed.Substring(0, spaceIdx) : trimmed;
+
+            var fp = NormalizeFingerprint(fpPart, source);
+            if (fp != null) set.Add(fp);
+        }
+    }
+    return set;
+}
+
+// --- Prepare Allowed Fingerprints (Static) ---
+if (!string.IsNullOrEmpty(MTLS_CERT_THEIRS))
+{
+    StaticFingerprints = ParseFingerprintList(MTLS_CERT_THEIRS, "ENV_VAR");
+    // Initially, Allowed = Static
+    AllowedFingerprints = new HashSet<string>(StaticFingerprints);
+    Console.WriteLine($"[Startup] Loaded {AllowedFingerprints.Count} static fingerprints from Env.");
+}
+
+// --- Dynamic Fingerprint Refresh Setup ---
+if (!string.IsNullOrEmpty(MTLS_CERT_THEIRS_URL))
+{
+    Console.WriteLine($"[Startup] Dynamic Fingerprint URL configured: {MTLS_CERT_THEIRS_URL}");
+
+    // Logic to rebuild list: Static + Dynamic
+    void RefreshFingerprints(object state)
+    {
+        try
+        {
+            string url = (string)state;
+            string content = FetchContentString(url); // Reuse existing fetcher
+
+            // Parse Dynamic List
+            var dynamicFps = ParseFingerprintList(content, "URL");
+
+            // Rebuild: Static + Dynamic
+            var newSet = new HashSet<string>(StaticFingerprints);
+            Console.WriteLine($"[Auth] Refreshing fingerprints... Static: {StaticFingerprints.Count}, Fetched: {dynamicFps.Count}");
+
+            foreach (var fp in dynamicFps)
+            {
+                if (!newSet.Contains(fp))
+                {
+                    Console.WriteLine($"[Auth] + Adding dynamic FP: {fp.Substring(0, 8)}...");
+                }
+                newSet.Add(fp);
+            }
+
+            // Atomic Swap
+            lock (_fpLock)
+            {
+                AllowedFingerprints = newSet;
+            }
+
+            Console.WriteLine($"[Auth] Fingerprint refresh complete. Total allowed: {AllowedFingerprints.Count}");
+            // Optional: Print all keys if needed (can be noisy)
+            // foreach(var fp in AllowedFingerprints) Console.WriteLine($"   - {fp}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Auth] ERROR during fingerprint refresh: {ex.Message}");
+        }
+    }
+
+    // Run immediately
+    RefreshFingerprints(MTLS_CERT_THEIRS_URL);
+
+    // Setup Timer (Every 60 mins)
+    var _fpTimer = new System.Threading.Timer(RefreshFingerprints, MTLS_CERT_THEIRS_URL,
+        TimeSpan.FromMinutes(60), TimeSpan.FromMinutes(60));
 }
 
 // We need these accessible to the background timer and the Kestrel callback
@@ -171,34 +286,97 @@ object _certLock = new object(); // Thread safety for swapping
 
 // --- Static Helper for HTTP Certificate Fetching ---
 // We use this for both PFX bytes and PEM string content
-static string FetchHttpContentString(string url)
+
+
+// --- Helper: Fetch Content (String) from HTTP, File, or Process ---
+static string FetchContentString(string source)
 {
-    Console.WriteLine($"[SSL] Fetching content from URL: {url}");
     try
     {
-        var uri = new Uri(url);
-        using (var handler = new HttpClientHandler())
+        // 1. Handle HTTP/HTTPS
+        if (source.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            source.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
-            handler.ServerCertificateCustomValidationCallback = (msg, cert, chain, errs) => true;
-            using (var client = new HttpClient(handler))
+            var uri = new Uri(source);
+            using (var handler = new HttpClientHandler())
             {
-                if (!string.IsNullOrEmpty(uri.UserInfo))
+                // Allow self-signed origins for internal fetching
+                handler.ServerCertificateCustomValidationCallback = (msg, cert, chain, errs) => true;
+                using (var client = new HttpClient(handler))
                 {
-                    string basicAuth = Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes(uri.UserInfo));
-                    client.DefaultRequestHeaders.Add("Authorization", $"Basic {basicAuth}");
+                    // Handle Basic Auth if embedded in URL
+                    if (!string.IsNullOrEmpty(uri.UserInfo))
+                    {
+                        string basicAuth = Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes(uri.UserInfo));
+                        client.DefaultRequestHeaders.Add("Authorization", $"Basic {basicAuth}");
+                    }
+                    // Sync download
+                    return client.GetStringAsync(uri.GetLeftPart(UriPartial.Path)).Result;
                 }
-
-                // Synchronous
-                return client.GetStringAsync(uri.GetLeftPart(UriPartial.Path)).Result;
             }
         }
+
+        // 2. Handle Local File (file://)
+        if (source.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+        {
+            var uri = new Uri(source);
+            string path = uri.LocalPath;
+            Console.WriteLine($"[Auth] Reading local file: {path}");
+            return System.IO.File.ReadAllText(path);
+        }
+
+        // 3. Handle Process Execution (process://)
+        if (source.StartsWith("process://", StringComparison.OrdinalIgnoreCase))
+        {
+            // Format: process:///path/to/executable
+            var uri = new Uri(source);
+            string path = uri.LocalPath;
+
+            Console.WriteLine($"[Auth] Executing process: {path}");
+
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = path,
+                // Pass query string as arguments? e.g. ?key=1 -> "key=1"
+                Arguments = string.IsNullOrEmpty(uri.Query) ? "" : uri.Query.TrimStart('?'),
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using (var proc = System.Diagnostics.Process.Start(psi))
+            {
+                string stdout = proc.StandardOutput.ReadToEnd();
+                string stderr = proc.StandardError.ReadToEnd();
+
+                // Wait with timeout (10 seconds)
+                if (!proc.WaitForExit(10000))
+                {
+                    proc.Kill();
+                    throw new TimeoutException($"Process '{path}' timed out after 10 seconds.");
+                }
+
+                if (proc.ExitCode != 0)
+                {
+                    throw new Exception($"Process '{path}' failed with code {proc.ExitCode}. Error: {stderr}");
+                }
+
+                return stdout;
+            }
+        }
+
+        // 4. Fallback (Try as raw file path)
+        Console.WriteLine($"[Auth] Warning: Unknown scheme in '{source}'. Attempting to read as file.");
+        return System.IO.File.ReadAllText(source);
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[CRITICAL] Failed to fetch from HTTP: {ex.Message}");
+        Console.WriteLine($"[CRITICAL] Failed to fetch content from '{source}': {ex.Message}");
         throw;
     }
 }
+
 
 static byte[] FetchHttpContentBytes(string url)
 {
@@ -220,6 +398,7 @@ static byte[] FetchHttpContentBytes(string url)
     }
 }
 
+
 bool ReloadServerCert()
 {
     try
@@ -232,15 +411,9 @@ bool ReloadServerCert()
             string certPem;
             string keyPem;
 
-            if (MTLS_CERT_OURS.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                certPem = FetchHttpContentString(MTLS_CERT_OURS);
-            else
-                certPem = System.IO.File.ReadAllText(MTLS_CERT_OURS);
+            certPem = FetchContentString(MTLS_CERT_OURS);
+            keyPem = FetchContentString(MTLS_KEY_OURS);
 
-            if (MTLS_KEY_OURS.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                keyPem = FetchHttpContentString(MTLS_KEY_OURS);
-            else
-                keyPem = System.IO.File.ReadAllText(MTLS_KEY_OURS);
 
             using (var tempCert = System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPem(certPem, keyPem))
             {
@@ -281,6 +454,7 @@ bool ReloadServerCert()
         return false;
     }
 }
+
 
 // --- Main Configuration Logic ---
 if (MTLS)
@@ -1352,6 +1526,94 @@ RequestDelegate WsHandler = async (HttpContext context) =>
         Logger.Log($"WS closed for cookie={cookie} in app={targetApp}");
     }
 };
+
+app.MapGet("/launch", (HttpContext context) =>
+{
+    System.Console.WriteLine("[launch] Launch endpoint hit...");
+    var query = context.Request.Query;
+
+    // Helper to safely get query values for pre-filling
+    string GetVal(string key) => query[key].FirstOrDefault() ?? "";
+
+    // Handle bools for checkboxes
+    string IsChecked(string key) =>
+        (query[key].FirstOrDefault()?.Equals("true", StringComparison.OrdinalIgnoreCase) ?? false)
+        ? "checked" : "";
+
+    // Resolve aliases (u/user -> u, p/pass -> p) for pre-fill
+    string userVal = string.IsNullOrEmpty(GetVal("u")) ? GetVal("user") : GetVal("u");
+    string passVal = string.IsNullOrEmpty(GetVal("p")) ? GetVal("pass") : GetVal("p");
+
+    string html = $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8'>
+    <title>Launch Configuration</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f4f4f9; color: #333; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }}
+        .container {{ background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }}
+        h3 {{ margin-top: 0; margin-bottom: 1.5rem; text-align: center; color: #444; }}
+        .form-group {{ margin-bottom: 1rem; }}
+        label {{ display: block; margin-bottom: 0.5rem; font-weight: 500; }}
+        input[type='text'], input[type='password'] {{ width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }}
+        .checkbox-group {{ display: flex; align-items: center; gap: 0.5rem; }}
+        .checkbox-group input {{ margin: 0; }}
+        button {{ width: 100%; padding: 0.75rem; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; margin-top: 1rem; }}
+        button:hover {{ background-color: #0056b3; }}
+        .section-title {{ font-size: 0.9rem; color: #666; margin-top: 1rem; margin-bottom: 0.5rem; border-bottom: 1px solid #eee; padding-bottom: 0.25rem; }}
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <h3>Session Launch</h3>
+        <form method='GET' action='/'>
+            <!-- Connection Options -->
+            <div class='section-title'>Connection</div>
+            
+            <div class='form-group checkbox-group'>
+                <input type='checkbox' id='webrtc' name='WebRTC' value='true' {IsChecked("WebRTC")}>
+                <label for='webrtc' style='margin-bottom:0'>Enable WebRTC</label>
+            </div>
+            
+            <div class='form-group checkbox-group'>
+                <input type='checkbox' id='heavy' name='heavy' value='true' {IsChecked("heavy")}>
+                <label for='heavy' style='margin-bottom:0'>Heavy Mode (Advanced Features)</label>
+            </div>
+
+            <!-- Authentication -->
+            <div class='section-title'>Authentication</div>
+            
+            <div class='form-group'>
+                <label for='password'>VNC Password</label>
+                <input type='password' id='password' name='password' placeholder='VNC Password' value='{GetVal("password")}'>
+            </div>
+
+            <div class='form-group'>
+                <label for='u'>Basic Auth User</label>
+                <input type='text' id='u' name='u' placeholder='Username' value='{userVal}'>
+            </div>
+
+            <div class='form-group'>
+                <label for='p'>Basic Auth Pass</label>
+                <input type='password' id='p' name='p' placeholder='Password' value='{passVal}'>
+            </div>
+
+            <div class='form-group'>
+                <label for='totp'>TOTP Code</label>
+                <input type='text' id='totp' name='totp' placeholder='One-time password' value='{GetVal("totp")}'>
+            </div>
+
+            <button type='submit'>Connect</button>
+        </form>
+    </div>
+</body>
+</html>";
+
+    return Results.Content(html, "text/html");
+});
+
+
 app.Map("/{targetApp}/ws", WsHandler);
 // Catch-All route to pick up malformed URLs like ////targetApp/ws.
 
