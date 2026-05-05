@@ -1392,6 +1392,7 @@ app.MapGet("/GenCert", (HttpContext context) =>
 app.MapGet("/launch", (HttpContext context) =>
 {
     System.Console.WriteLine("[launch] Launch endpoint hit...");
+    string E(string s) => System.Net.WebUtility.HtmlEncode(s);
     var query = context.Request.Query;
 
     // Helper to safely get query values for pre-filling
@@ -1453,12 +1454,12 @@ app.MapGet("/launch", (HttpContext context) =>
 
             <div class='form-group'>
                 <label for='u'>Basic Auth User</label>
-                <input type='text' id='u' name='u' placeholder='Username' value='{userVal}'>
+                <input type='text' id='u' name='u' placeholder='Username' value='{E(userVal)}'>
             </div>
 
             <div class='form-group'>
                 <label for='p'>Basic Auth Pass</label>
-                <input type='password' id='p' name='p' placeholder='Password' value='{passVal}'>
+                <input type='password' id='p' name='p' placeholder='Password' value='{E(passVal)}'>
             </div>
 
             <div class='form-group'>
