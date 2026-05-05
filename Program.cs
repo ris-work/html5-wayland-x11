@@ -286,37 +286,6 @@ System.Security.Cryptography.X509Certificates.X509Certificate2 _currentServerCer
 DateTime _lastCertLoadTime = DateTime.MinValue;
 object _certLock = new object(); // Thread safety for swapping
 
-// --- Static Helper for HTTP Certificate Fetching ---
-// We use this for both PFX bytes and PEM string content
-static string FetchHttpContentString(string url)
-{
-    Console.WriteLine($"[SSL] Fetching content from URL: {url}");
-    try
-    {
-        var uri = new Uri(url);
-        using (var handler = new HttpClientHandler())
-        {
-            handler.ServerCertificateCustomValidationCallback = (msg, cert, chain, errs) => true;
-            using (var client = new HttpClient(handler))
-            {
-                if (!string.IsNullOrEmpty(uri.UserInfo))
-                {
-                    string basicAuth = Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes(uri.UserInfo));
-                    client.DefaultRequestHeaders.Add("Authorization", $"Basic {basicAuth}");
-                }
-
-                // Synchronous
-                return client.GetStringAsync(uri.GetLeftPart(UriPartial.Path)).Result;
-            }
-        }
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"[CRITICAL] Failed to fetch from HTTP: {ex.Message}");
-        throw;
-    }
-}
-
 // --- Helper: Fetch Content (String) from HTTP, File, or Process ---
 static string FetchContentString(string source)
 {
