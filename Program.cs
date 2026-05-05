@@ -1389,6 +1389,92 @@ app.MapGet("/GenCert", (HttpContext context) =>
     }
 });
 
+app.MapGet("/launch", (HttpContext context) =>
+{
+    System.Console.WriteLine("[launch] Launch endpoint hit...");
+    var query = context.Request.Query;
+
+    // Helper to safely get query values for pre-filling
+    string GetVal(string key) => query[key].FirstOrDefault() ?? "";
+
+    // Handle bools for checkboxes
+    string IsChecked(string key) =>
+        (query[key].FirstOrDefault()?.Equals("true", StringComparison.OrdinalIgnoreCase) ?? false)
+        ? "checked" : "";
+
+    // Resolve aliases (u/user -> u, p/pass -> p) for pre-fill
+    string userVal = string.IsNullOrEmpty(GetVal("u")) ? GetVal("user") : GetVal("u");
+    string passVal = string.IsNullOrEmpty(GetVal("p")) ? GetVal("pass") : GetVal("p");
+
+    string html = $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8'>
+    <title>Launch Configuration</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f4f4f9; color: #333; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }}
+        .container {{ background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }}
+        h3 {{ margin-top: 0; margin-bottom: 1.5rem; text-align: center; color: #444; }}
+        .form-group {{ margin-bottom: 1rem; }}
+        label {{ display: block; margin-bottom: 0.5rem; font-weight: 500; }}
+        input[type='text'], input[type='password'] {{ width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }}
+        .checkbox-group {{ display: flex; align-items: center; gap: 0.5rem; }}
+        .checkbox-group input {{ margin: 0; }}
+        button {{ width: 100%; padding: 0.75rem; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; margin-top: 1rem; }}
+        button:hover {{ background-color: #0056b3; }}
+        .section-title {{ font-size: 0.9rem; color: #666; margin-top: 1rem; margin-bottom: 0.5rem; border-bottom: 1px solid #eee; padding-bottom: 0.25rem; }}
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <h3>Session Launch</h3>
+        <form method='GET' action='/'>
+            <!-- Connection Options -->
+            <div class='section-title'>Connection</div>
+            
+            <div class='form-group checkbox-group'>
+                <input type='checkbox' id='webrtc' name='WebRTC' value='true' {IsChecked("WebRTC")}>
+                <label for='webrtc' style='margin-bottom:0'>Enable WebRTC</label>
+            </div>
+            
+            <div class='form-group checkbox-group'>
+                <input type='checkbox' id='heavy' name='heavy' value='true' {IsChecked("heavy")}>
+                <label for='heavy' style='margin-bottom:0'>Heavy Mode (Advanced Features)</label>
+            </div>
+
+            <!-- Authentication -->
+            <div class='section-title'>Authentication</div>
+            
+            <div class='form-group'>
+                <label for='password'>VNC Password</label>
+                <input type='password' id='password' name='password' placeholder='VNC Password' value='{GetVal("password")}'>
+            </div>
+
+            <div class='form-group'>
+                <label for='u'>Basic Auth User</label>
+                <input type='text' id='u' name='u' placeholder='Username' value='{userVal}'>
+            </div>
+
+            <div class='form-group'>
+                <label for='p'>Basic Auth Pass</label>
+                <input type='password' id='p' name='p' placeholder='Password' value='{passVal}'>
+            </div>
+
+            <div class='form-group'>
+                <label for='totp'>TOTP Code</label>
+                <input type='text' id='totp' name='totp' placeholder='One-time password' value='{GetVal("totp")}'>
+            </div>
+
+            <button type='submit'>Connect</button>
+        </form>
+    </div>
+</body>
+</html>";
+
+    return Results.Content(html, "text/html");
+});
+
 
 app.Map("/{targetApp}/ws", WsHandler);
 // Now, register the fallback so that requests not handled by earlier endpoints are processed here.
