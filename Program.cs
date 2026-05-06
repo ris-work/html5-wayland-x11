@@ -1450,7 +1450,6 @@ app.MapGet("/launch", (HttpContext context) =>
             </div>
 
             <div class='form-group checkbox-group'>
-                <input type='hidden' name='scale' value='false'>
                 <input type='checkbox' id='scale' name='scale' value='true' {scaleChecked}>
                 <label for='scale' style='margin-bottom:0'>Enable Scale</label>
             </div>
