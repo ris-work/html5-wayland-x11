@@ -1177,6 +1177,7 @@ app.MapGet("SignOut", (HttpContext context) =>
 // GET "/" route: redirect user only to vnc_lite.html (WS endpoint is passed as querystring without leading slash)
 app.MapGet("/", async (HttpContext context) =>
 {
+    if (context.Request.QueryString.HasValue == false) return Results.Redirect("launch");
     string targetApp = (string?)context.Request.Query["app"] ?? (string?)context.Request.Query["App"];
     string QIsWebRTCSession = (string?)context.Request.Query["WebRTC"] ?? (string?)context.Request.Query["webrtc"];
     Logger.Log($"QIsWebRTCSession: {QIsWebRTCSession}");
@@ -1391,21 +1392,25 @@ app.MapGet("/GenCert", (HttpContext context) =>
 
 app.MapGet("/launch", (HttpContext context) =>
 {
-    System.Console.WriteLine("[launch] Launch endpoint hit...");
-    string E(string s) => System.Net.WebUtility.HtmlEncode(s);
     var query = context.Request.Query;
 
-    // Helper to safely get query values for pre-filling
+    // Helper to safely get query values
     string GetVal(string key) => query[key].FirstOrDefault() ?? "";
+    // Helper to escape HTML for XSS protection
+    string E(string s) => System.Net.WebUtility.HtmlEncode(s);
 
     // Handle bools for checkboxes
     string IsChecked(string key) =>
         (query[key].FirstOrDefault()?.Equals("true", StringComparison.OrdinalIgnoreCase) ?? false)
         ? "checked" : "";
 
-    // Resolve aliases (u/user -> u, p/pass -> p) for pre-fill
+    // Resolve aliases
     string userVal = string.IsNullOrEmpty(GetVal("u")) ? GetVal("user") : GetVal("u");
     string passVal = string.IsNullOrEmpty(GetVal("p")) ? GetVal("pass") : GetVal("p");
+
+    // Scale defaults to TRUE. Checked if missing or "true".
+    string scaleChecked = (!query.ContainsKey("scale") || query["scale"].FirstOrDefault()?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
+                          ? "checked" : "";
 
     string html = $@"
 <!DOCTYPE html>
@@ -1444,12 +1449,18 @@ app.MapGet("/launch", (HttpContext context) =>
                 <label for='heavy' style='margin-bottom:0'>Heavy Mode (Advanced Features)</label>
             </div>
 
+            <div class='form-group checkbox-group'>
+                <input type='hidden' name='scale' value='false'>
+                <input type='checkbox' id='scale' name='scale' value='true' {scaleChecked}>
+                <label for='scale' style='margin-bottom:0'>Enable Scale</label>
+            </div>
+
             <!-- Authentication -->
             <div class='section-title'>Authentication</div>
             
             <div class='form-group'>
                 <label for='password'>VNC Password</label>
-                <input type='password' id='password' name='password' placeholder='VNC Password' value='{GetVal("password")}'>
+                <input type='password' id='password' name='password' placeholder='VNC Password' value='{E(GetVal("password"))}'>
             </div>
 
             <div class='form-group'>
@@ -1464,7 +1475,7 @@ app.MapGet("/launch", (HttpContext context) =>
 
             <div class='form-group'>
                 <label for='totp'>TOTP Code</label>
-                <input type='text' id='totp' name='totp' placeholder='One-time password' value='{GetVal("totp")}'>
+                <input type='text' id='totp' name='totp' placeholder='One-time password' value='{E(GetVal("totp"))}'>
             </div>
 
             <button type='submit'>Connect</button>
