@@ -1412,12 +1412,63 @@ app.MapGet("/launch", (HttpContext context) =>
     string scaleChecked = (!query.ContainsKey("scale") || query["scale"].FirstOrDefault()?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
                           ? "checked" : "";
 
+    // --- System Info Variables (Robust) ---
+    string machineName = "Unknown";
+    string ipList = "N/A";
+    string diskInfo = "N/A";
+    string ramInfo = "N/A";
+    string assemblyVer = "N/A";
+
+    try { machineName = Environment.MachineName; } catch { }
+    try { machineName = System.Net.Dns.GetHostName(); } catch { }
+
+    try
+    {
+        var ips = new System.Collections.Generic.List<string>();
+        foreach (var intf in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
+        {
+            if (intf.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up) continue;
+            foreach (var addr in intf.GetIPProperties().UnicastAddresses)
+            {
+                if (addr.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                    ips.Add(addr.Address.ToString());
+            }
+        }
+        ipList = string.Join(", ", ips);
+    }
+    catch { }
+
+    try
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var d in System.IO.DriveInfo.GetDrives().Where(d => d.IsReady && d.DriveType == System.IO.DriveType.Fixed))
+        {
+            sb.Append($"{d.Name} {(d.AvailableFreeSpace / (1024 * 1024 * 1024))}GB free; ");
+        }
+        diskInfo = sb.ToString().TrimEnd(' ', ';');
+    }
+    catch { }
+
+    try
+    {
+        ramInfo = $"{GC.GetTotalMemory(false) / (1024 * 1024)}MB Heap";
+    }
+    catch { }
+
+    try
+    {
+        var asm = System.Reflection.Assembly.GetExecutingAssembly();
+        var attr = asm.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>();
+        assemblyVer = attr?.InformationalVersion ?? asm.GetName().Version?.ToString() ?? "?";
+    }
+    catch { }
+
     string html = $@"
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset='utf-8'>
-    <title>Launch Configuration</title>
+    <title>Launch Configuration - {E(machineName)}</title>
     <style>
         body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f4f4f9; color: #333; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }}
         .container {{ background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }}
@@ -1434,7 +1485,7 @@ app.MapGet("/launch", (HttpContext context) =>
 </head>
 <body>
     <div class='container'>
-        <h3>Session Launch</h3>
+        <h3>Launch Configuration <span style='color:#666;font-size:0.8em'>({E(machineName)})</span></h3>
         <form method='GET' action='/'>
             <!-- Connection Options -->
             <div class='section-title'>Connection</div>
@@ -1478,6 +1529,13 @@ app.MapGet("/launch", (HttpContext context) =>
             </div>
 
             <button type='submit'>Connect</button>
+
+            <div style='margin-top:2rem; font-size:0.8em; color:#888; line-height:1.4; word-break:break-all;'>
+                <div><b>IPs:</b> {E(ipList)}</div>
+                <div><b>Disk:</b> {E(diskInfo)}</div>
+                <div><b>RAM:</b> {E(ramInfo)}</div>
+                <div><b>Ver:</b> {E(assemblyVer)}</div>
+            </div>
         </form>
     </div>
 </body>
