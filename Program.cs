@@ -1550,29 +1550,147 @@ app.MapGet("/launch", (HttpContext context) =>
     string scaleChecked = (!query.ContainsKey("scale") || query["scale"].FirstOrDefault()?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
                           ? "checked" : "";
 
+    // --- System Info Variables (Robust) ---
+    string machineName = "Unknown";
+    string ipList = "N/A";
+    string diskInfo = "N/A";
+    string ramInfo = "N/A";
+    string assemblyVer = "N/A";
+
+    try { machineName = Environment.MachineName; } catch { }
+    try { machineName = System.Net.Dns.GetHostName(); } catch { }
+
+    try
+    {
+        var ips = new System.Collections.Generic.List<string>();
+        foreach (var intf in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
+        {
+            if (intf.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up) continue;
+            foreach (var addr in intf.GetIPProperties().UnicastAddresses)
+            {
+                if (addr.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork || addr.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+                {
+                    string ip = addr.Address.ToString();
+                    string prefix = "";
+                    try { prefix = $"/{addr.PrefixLength}"; } catch { }
+                    ips.Add($"{ip}{prefix}");
+                }
+            }
+        }
+
+        // Sort: Others (Public/Misc) -> 192.168.x -> 10.x -> 127.x
+        // Sort: GUA -> Local/Router-Assigned -> Bluetooth -> Link-Local -> Multicast -> Loopback
+        var sortedIps = ips.OrderBy(ip => {
+            // Handle exclusions (Bluetooth/Loopback)
+            if (ip.StartsWith("192.168.56.")) return 3; // Push Bluetooth/Host-only down
+            if (ip.StartsWith("127.") || ip == "::1") return 6; // Last
+
+            try
+            {
+                var addr = System.Net.IPAddress.Parse(ip.Split('/')[0]);
+                var bytes = addr.GetAddressBytes();
+
+                // IPv6 Logic
+                if (addr.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+                {
+                    if (bytes[0] >= 0x20 && bytes[0] <= 0x3F) return 0; // GUA (2000::/3)
+                    if (bytes[0] == 0xFC || bytes[0] == 0xFD) return 1; // ULA (Local/Router-Assigned)
+                    if (bytes[0] == 0xFE && (bytes[1] & 0xC0) == 0x80) return 4; // Link-Local (fe80::/10)
+                    if (bytes[0] == 0xFF) return 5; // Multicast
+                    return 2; // Other Local
+                }
+
+                // IPv4 Logic
+                if (bytes[0] >= 224 && bytes[0] <= 239) return 5; // Multicast
+                if (bytes[0] == 169 && bytes[1] == 254) return 4; // Link-Local (APIPA)
+
+                // Private / Router-Assigned
+                if (bytes[0] == 10) return 1;
+                if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return 1;
+                if (bytes[0] == 192 && bytes[1] == 168) return 1; // Note: 192.168.56.x handled above
+
+                return 0; // GUA / Public
+            }
+            catch { return 99; }
+        }).ToList();
+
+        ipList = string.Join(", ", sortedIps);
+    }
+    catch { }
+
+    try
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var d in System.IO.DriveInfo.GetDrives().Where(d => d.IsReady && d.DriveType == System.IO.DriveType.Fixed))
+        {
+            sb.Append($"{d.Name} {(d.AvailableFreeSpace / (1024 * 1024 * 1024))}GB free; ");
+        }
+        diskInfo = sb.ToString().TrimEnd(' ', ';');
+    }
+    catch { }
+
+    try
+    {
+        // 1. Get Process Memory Usage (Working Set)
+        long usedBytes = System.Diagnostics.Process.GetCurrentProcess().WorkingSet64;
+        string usedStr = $"{usedBytes / (1024 * 1024)}MB Used by me (process)";
+
+        // 2. Get System Total RAM (Robust Cross-Platform approach)
+        string totalStr = "";
+        try
+        {
+            // GCMemoryInfo often reflects container limits or physical RAM
+            long totalRam = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
+            totalStr = $"{totalRam / (1024 * 1024)}MB Total";
+        }
+        catch { totalStr = "Total N/A"; }
+
+        ramInfo = $"{usedStr} / {totalStr}";
+    }
+    catch { ramInfo = "N/A"; }
+
+    try
+    {
+        var asm = System.Reflection.Assembly.GetExecutingAssembly();
+        var attr = asm.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>();
+        assemblyVer = attr?.InformationalVersion ?? asm.GetName().Version?.ToString() ?? "?";
+    }
+    catch { }
+
     string html = $@"
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset='utf-8'>
-    <title>Launch Configuration</title>
+    <title>Launch Configuration - {E(machineName)}</title>
     <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f4f4f9; color: #333; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }}
-        .container {{ background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }}
-        h3 {{ margin-top: 0; margin-bottom: 1.5rem; text-align: center; color: #444; }}
-        .form-group {{ margin-bottom: 1rem; }}
-        label {{ display: block; margin-bottom: 0.5rem; font-weight: 500; }}
-        input[type='text'], input[type='password'] {{ width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }}
-        .checkbox-group {{ display: flex; align-items: center; gap: 0.5rem; }}
-        .checkbox-group input {{ margin: 0; }}
-        button {{ width: 100%; padding: 0.75rem; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; margin-top: 1rem; }}
-        button:hover {{ background-color: #0056b3; }}
-        .section-title {{ font-size: 0.9rem; color: #666; margin-top: 1rem; margin-bottom: 0.5rem; border-bottom: 1px solid #eee; padding-bottom: 0.25rem; }}
+        body {{ font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #0f172a; color: #e2e8f0; display: flex; justify-content: center; min-height: 100vh; margin: 0; flex-direction: column; }}
+        .container {{ background: #1e293b; padding: 1.5rem; border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); width: 100%; max-width: 420px; margin: auto; border-top: 6px solid #ff6b6b; }}
+        h3 {{ margin-top: 0; margin-bottom: 1rem; text-align: center; color: #f8fafc; font-weight: 800; font-size: 1.5rem; }}
+        /* Force high contrast for machine name span */
+        h3 span {{ color: #cbd5e1 !important; font-size: 0.8em; }}
+        
+        .form-group {{ margin-bottom: 0.75rem; }}
+        label {{ display: block; margin-bottom: 0.25rem; font-weight: 600; color: #94a3b8; }}
+        input[type='text'], input[type='password'] {{ width: 100%; padding: 0.65rem 0.75rem; border: 2px solid #334155; border-radius: 8px; color: #f1f5f9; background: #0f172a; box-sizing: border-box; transition: all 0.2s; }}
+        input:focus {{ outline: none; border-color: #22d3ee; background: #020617; }}
+        
+        .checkbox-group {{ display: flex; align-items: center; gap: 0.5rem; background: #0f172a; padding: 8px; border-radius: 8px; border: 1px solid #334155; margin-bottom: 0.5rem; }}
+        .checkbox-group input {{ margin: 0; width: 18px; height: 18px; accent-color: #ff6b6b; }}
+        .checkbox-group label {{ margin-bottom: 0; color: #f1f5f9; cursor: pointer; font-size: 0.9rem; }}
+        
+        button {{ width: 100%; padding: 0.75rem; background: linear-gradient(135deg, #00b4d8, #7209b7); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem; font-weight: 700; margin-top: 1rem; letter-spacing: 0.5px; transition: transform 0.2s, box-shadow 0.2s; }}
+        button:hover {{ transform: translateY(-2px); box-shadow: 0 7px 14px rgba(114, 9, 183, 0.35); }}
+        
+        .section-title {{ font-size: 0.85rem; color: #a78bfa; margin-top: 1rem; margin-bottom: 0.5rem; border-bottom: 1px solid #334155; padding-bottom: 0.15rem; text-transform: uppercase; font-weight: 700; }}
+        
+        /* Force high contrast for footer info */
+        .container form > div:last-child {{ color: #cbd5e1 !important; margin-top: 1.25rem !important; font-size: 0.85em !important; }}
     </style>
 </head>
 <body>
     <div class='container'>
-        <h3>Session Launch</h3>
+        <h3>Launch Configuration <span style='color:#666;font-size:0.8em'>({E(machineName)})</span></h3>
         <form method='GET' action='/'>
             <!-- Connection Options -->
             <div class='section-title'>Connection</div>
@@ -1616,6 +1734,13 @@ app.MapGet("/launch", (HttpContext context) =>
             </div>
 
             <button type='submit'>Connect</button>
+
+            <div style='margin-top:2rem; font-size:0.8em; color:#888; line-height:1.4; word-break:break-all;'>
+                <div><b>IPs:</b> {E(ipList)}</div>
+                <div><b>Disk:</b> {E(diskInfo)}</div>
+                <div><b>RAM:</b> {E(ramInfo)}</div>
+                <div><b>Ver:</b> {E(assemblyVer)}</div>
+            </div>
         </form>
     </div>
 </body>
