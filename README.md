@@ -23,6 +23,10 @@ I needed a simpler, cross-platform, FOSS, lighter (i.e. no driver needed), also 
 
 A browser is actualy not a requirement, but to use this without a browser you need some more programs and configuration juggling from the client side. Things are programmed in a way to not really *need* a browser. Works on Chrome, Edge and Firefox (tier 1) and Apple Mobile Safari (tier 3) - I am not sure about keyboard support in Apple platforms, a physical keyboard SHOULD work.  
 
+<img src="https://vz.al/repos/fw/raw/5a5b8ee6c6827acc7987b17a5a45e99f76f08d56c4c376b96e4a76fc210fad6e?m=image/png" alt="Screenshot: Certificate select" />  
+<img src="https://vz.al/repos/fw/raw/57cf987bdc6d96d653a8194b6db15daad1b50cfddc8b9346105118341cb4df07?m=image/png" alt="Screenshot: Login" />  
+<img src="https://vz.al/repos/fw/raw/94444a778a0945b173595bc7fefa41460d0dbcfe0491855fa2bd43d7d32b34c8?m=image/png" alt="Screenshot: Working" />  
+
 ## Things that might happen in the future
  - Post-Quantum cryptography with pre-shared key with custom non-standard crypto (or wait it out until DTLS 1.3+ PQ is there in `webrtc-rs`, update and recompile)  
  - An OTP system that sends OTP by e.g. SMS or something  
