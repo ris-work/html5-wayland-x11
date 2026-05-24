@@ -1440,12 +1440,11 @@ app.MapGet("/launch", (HttpContext context) =>
             }
         }
 
-        // Sort: Others (Public/Misc) -> 192.168.x -> 10.x -> 127.x
-        // Sort: GUA -> Local/Router-Assigned -> Bluetooth -> Link-Local -> Multicast -> Loopback
+        // Sort: GUA -> Private(192.168) -> Private(Other) -> Bluetooth -> LinkLocal -> Multicast -> Loopback
         var sortedIps = ips.OrderBy(ip => {
-            // Handle exclusions (Bluetooth/Loopback)
-            if (ip.StartsWith("192.168.56.")) return 3; // Push Bluetooth/Host-only down
-            if (ip.StartsWith("127.") || ip == "::1") return 6; // Last
+            // 1. Loopback & Bluetooth (Push to end)
+            if (ip.StartsWith("192.168.56.")) return 50; // Bluetooth/Host-only
+            if (ip.StartsWith("127.") || ip == "::1") return 100; // Loopback
 
             try
             {
@@ -1455,26 +1454,26 @@ app.MapGet("/launch", (HttpContext context) =>
                 // IPv6 Logic
                 if (addr.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
                 {
-                    if (bytes[0] >= 0x20 && bytes[0] <= 0x3F) return 0; // GUA (2000::/3)
-                    if (bytes[0] == 0xFC || bytes[0] == 0xFD) return 1; // ULA (Local/Router-Assigned)
-                    if (bytes[0] == 0xFE && (bytes[1] & 0xC0) == 0x80) return 4; // Link-Local (fe80::/10)
-                    if (bytes[0] == 0xFF) return 5; // Multicast
-                    return 2; // Other Local
+                    if (bytes[0] >= 0x20 && bytes[0] <= 0x3F) return 0; // GUA
+                    if (bytes[0] == 0xFC || bytes[0] == 0xFD) return 2; // ULA (Private Other)
+                    if (bytes[0] == 0xFE && (bytes[1] & 0xC0) == 0x80) return 40; // Link-Local
+                    if (bytes[0] == 0xFF) return 60; // Multicast
+                    return 5; // Other
                 }
 
                 // IPv4 Logic
-                if (bytes[0] >= 224 && bytes[0] <= 239) return 5; // Multicast
-                if (bytes[0] == 169 && bytes[1] == 254) return 4; // Link-Local (APIPA)
+                if (bytes[0] == 192 && bytes[1] == 168) return 1; // Private Preferred (Home LAN)
 
-                // Private / Router-Assigned
-                if (bytes[0] == 10) return 1;
-                if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return 1;
-                if (bytes[0] == 192 && bytes[1] == 168) return 1; // Note: 192.168.56.x handled above
+                if (bytes[0] == 10) return 2;                    // Private Other
+                if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return 2; // Private Other
+
+                if (bytes[0] == 169 && bytes[1] == 254) return 40; // Link-Local
+                if (bytes[0] >= 224 && bytes[0] <= 239) return 60; // Multicast
 
                 return 0; // GUA / Public
             }
             catch { return 99; }
-        }).ToList();
+        }).ThenBy(ip => ip).ToList(); // Secondary sort by string for logical ordering within groups
 
         ipList = string.Join(", ", sortedIps);
     }
